@@ -1,4 +1,6 @@
+using Aki.Custom.BTR.Patches;
 using BepInEx;
+using StayInTarkov.AkiSupport.Custom;
 using StayInTarkov.AkiSupport.Singleplayer.Patches.Healing;
 using StayInTarkov.AkiSupport.Singleplayer.Patches.MainMenu;
 using StayInTarkov.AkiSupport.Singleplayer.Patches.Progression;
@@ -50,6 +52,23 @@ namespace StayInTarkov.AkiSupport.Singleplayer
                 new ScavItemCheckmarkPatch().Enable();
                 new IsHostileToEverybodyPatch().Enable();
                 
+                // BTR Patches
+                new BTRPathLoadPatch().Enable();
+                new BTRActivateTraderDialogPatch().Enable();
+                new BTRInteractionPatch().Enable();
+                new BTRExtractPassengersPatch().Enable();
+                new BTRBotAttachPatch().Enable();
+                new BTRReceiveDamageInfoPatch().Enable();
+                new BTRTurretCanShootPatch().Enable();
+                new BTRTurretDefaultAimingPositionPatch().Enable();
+                new BTRIsDoorsClosedPath().Enable();
+                new BTRPatch().Enable();
+                new BTRTransferItemsPatch().Enable();
+                new BTREndRaidItemDeliveryPatch().Enable();
+                new BTRDestroyAtRaidEndPatch().Enable();
+                new BTRVehicleMovementSpeedPatch().Enable();
+                new ResetTraderServicesPatch().Enable();
+
                 // Unused Patches
                 //new OfflineSaveProfilePatch().Enable();
                 //new OfflineSpawnPointPatch().Enable();
