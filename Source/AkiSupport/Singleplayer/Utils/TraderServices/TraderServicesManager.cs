@@ -76,7 +76,7 @@ namespace StayInTarkov.AkiSupport.Singleplayer.Utils.TraderServices
             // Only request data from the server if it's not already cached
             if (!_cachedTraders.Contains(traderId))
             {
-                var json = AkiBackendCommunication.Instance.PostJson($"/coop/server/traderServices/getTraderServices/{traderId}", new
+                var json = AkiBackendCommunication.Instance.PostJson($"/singleplayer/traderServices/getTraderServices/{traderId}", new
                 {
                     SessionId = player.Profile.ProfileId
                 }.ToJson());
