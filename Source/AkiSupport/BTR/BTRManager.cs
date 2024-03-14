@@ -1,13 +1,13 @@
 ﻿using Aki.Custom.BTR.Utils;
+using BepInEx.Logging;
 using Comfort.Common;
 using EFT;
-using EFT.Hideout;
 using EFT.InventoryLogic;
 using EFT.UI;
 using EFT.Vehicle;
 using HarmonyLib;
+using StayInTarkov.AkiSupport.Singleplayer.Utils.InRaid;
 using StayInTarkov.AkiSupport.Singleplayer.Utils.TraderServices;
-using StayInTarkov.Coop.SITGameModes;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -53,8 +53,9 @@ namespace Aki.Custom.BTR
         private MethodInfo _updateTaxiPriceMethod;
 
 		private float originalDamageCoeff;
+        private ManualLogSource Logger { get; set; }
 
-		BTRManager()
+        BTRManager()
         {
             Type btrControllerType = typeof(BTRControllerClass);
             _updateTaxiPriceMethod = AccessTools.GetDeclaredMethods(btrControllerType).Single(IsUpdateTaxiPriceMethod);
@@ -62,6 +63,9 @@ namespace Aki.Custom.BTR
         
         private void Awake()
         {
+            Logger = BepInEx.Logging.Logger.CreateLogSource("BTRManager");
+            Logger.LogInfo("BTRManager.Awake");
+            Singleton<BTRManager>.Create(this);
             try
             {
                 gameWorld = Singleton<GameWorld>.Instance;
@@ -70,12 +74,13 @@ namespace Aki.Custom.BTR
                     Destroy(this);
                     return;
                 }
-
+                gameWorld.LocationId = RaidChangesUtil.LocationId;
                 if (gameWorld.BtrController == null)
                 {
                     gameWorld.BtrController = new BTRControllerClass();
                 }
 
+                Logger.LogInfo($"BTRManager.LocationId:{gameWorld.LocationId}");
                 btrController = gameWorld.BtrController;
 
                 InitBtr();
@@ -179,7 +184,6 @@ namespace Aki.Custom.BTR
             btrBotService = botsController.BotTradersServices.BTRServices;
             btrController.method_3(); // spawns server-side BTR game object
             botsController.BotSpawner.SpawnBotBTR(); // spawns the scav bot which controls the BTR's turret
-            ConsoleScreen.LogError($"[AKI-BTR] BTRManager - BtrVehicle - {btrController.BtrVehicle.BtrState}");
 
             // Initial BTR configuration
             btrServerSide = btrController.BtrVehicle;
@@ -189,46 +193,34 @@ namespace Aki.Custom.BTR
             // Get config from server and initialise respective settings
             ConfigureSettingsFromServer();
 
-            btrController.method_4("TarkovStreets"); // spawns MapPathsConfiguration
             var btrMapConfig = btrController.MapPathsConfiguration;
-            ConsoleScreen.LogError($"[AKI-BTR] BTRManager - {btrMapConfig}");
             btrServerSide.CurrentPathConfig = btrMapConfig.PathsConfiguration.pathsConfigurations.RandomElement();
             
-            ConsoleScreen.LogError($"[AKI-BTR] BTRManager - GetPathParts - {btrMapConfig.GetPathParts(btrServerSide.CurrentPathConfig.GetAllPathPoints())}");
             btrServerSide.Initialization(btrMapConfig);
             btrController.method_14(); // creates and assigns the BTR a fake stash
-            ConsoleScreen.LogError("[AKI-BTR] BTRManager - method_14");
 
             DisableServerSideRenderers();
 
             gameWorld.MainPlayer.OnBtrStateChanged += HandleBtrDoorState;
-            ConsoleScreen.LogError("[AKI-BTR] BTRManager - HandleBtrDoorState");
 
-            //btrServerSide.MoveEnable();
-            ConsoleScreen.LogError("[AKI-BTR] BTRManager - MoveEnable");
+            btrServerSide.MoveEnable();
             btrServerSide.IncomingToDestinationEvent += ToDestinationEvent;
-            ConsoleScreen.LogError("[AKI-BTR] BTRManager - ToDestinationEvent");
 
             // Sync initial position and rotation
             UpdateDataPacket();
-            ConsoleScreen.LogError("[AKI-BTR] BTRManager - UpdateDataPacket");
             btrClientSide.transform.position = btrDataPacket.position;
             btrClientSide.transform.rotation = btrDataPacket.rotation;
 
             // Initialise turret variables
-            //btrTurretServer = btrServerSide.BTRTurret;
-            //ConsoleScreen.LogError("[AKI-BTR] BTRManager - btrTurretServer");
-            //var btrTurretDefaultTargetTransform = (Transform)AccessTools.Field(btrTurretServer.GetType(), "defaultTargetTransform").GetValue(btrTurretServer);
-            //ConsoleScreen.LogError("[AKI-BTR] BTRManager - btrTurretDefaultTargetTransform");
-            //isTurretInDefaultRotation = btrTurretServer.targetTransform == btrTurretDefaultTargetTransform 
-            //    && btrTurretServer.targetPosition == btrTurretServer.defaultAimingPosition;
-            //ConsoleScreen.LogError("[AKI-BTR] BTRManager - isTurretInDefaultRotation");
-            //btrMachineGunAmmo = (BulletClass)BTRUtil.CreateItem(BTRUtil.BTRMachineGunAmmoTplId);
-            //btrMachineGunWeapon = BTRUtil.CreateItem(BTRUtil.BTRMachineGunWeaponTplId);
-            //ConsoleScreen.LogError("[AKI-BTR] BTRManager - btrMachineGunWeapon");
+            btrTurretServer = btrServerSide.BTRTurret;
+            var btrTurretDefaultTargetTransform = (Transform)AccessTools.Field(btrTurretServer.GetType(), "defaultTargetTransform").GetValue(btrTurretServer);
+            isTurretInDefaultRotation = btrTurretServer.targetTransform == btrTurretDefaultTargetTransform
+                && btrTurretServer.targetPosition == btrTurretServer.defaultAimingPosition;
+            btrMachineGunAmmo = (BulletClass)BTRUtil.CreateItem(BTRUtil.BTRMachineGunAmmoTplId);
+            btrMachineGunWeapon = BTRUtil.CreateItem(BTRUtil.BTRMachineGunWeaponTplId);
 
             // Pull services data for the BTR from the server
-            //TraderServicesManager.Instance.GetTraderServicesDataFromServer(BTRUtil.BTRTraderId);
+            TraderServicesManager.Instance.GetTraderServicesDataFromServer(BTRUtil.BTRTraderId);
         }
 
         private void ConfigureSettingsFromServer()

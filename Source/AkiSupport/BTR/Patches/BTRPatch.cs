@@ -32,7 +32,7 @@ namespace Aki.Custom.BTR.Patches
                 string location = gameWorld.MainPlayer.Location;
                 if (!btrSettings.LocationsWithBTR.Contains(location))
                 {
-                    //return;
+                    return;
                 }
 
                 gameWorld.gameObject.AddComponent<BTRManager>();

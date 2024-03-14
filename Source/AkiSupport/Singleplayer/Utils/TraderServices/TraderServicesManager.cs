@@ -13,6 +13,7 @@ using TraderServiceClass = TraderServiceAvailabilityData;
 using QuestDictClass = GClass2133<string>;
 using StandingListClass = GClass2135<float>;
 using StayInTarkov.Networking;
+using UnityEngine.Networking.Match;
 
 namespace StayInTarkov.AkiSupport.Singleplayer.Utils.TraderServices
 {
@@ -75,7 +76,11 @@ namespace StayInTarkov.AkiSupport.Singleplayer.Utils.TraderServices
             // Only request data from the server if it's not already cached
             if (!_cachedTraders.Contains(traderId))
             {
-                var json = AkiBackendCommunication.Instance.GetJson($"/singleplayer/traderServices/getTraderServices/{traderId}");
+                var json = AkiBackendCommunication.Instance.PostJson($"/coop/server/traderServices/getTraderServices/{traderId}", new
+                {
+                    SessionId = player.Profile.ProfileId
+                }.ToJson());
+                //var json = AkiBackendCommunication.Instance.GetJson($"/singleplayer/traderServices/getTraderServices/{traderId}");
                 var traderServiceModels = JsonConvert.DeserializeObject<List<TraderServiceModel>>(json);
 
                 foreach (var traderServiceModel in traderServiceModels)
