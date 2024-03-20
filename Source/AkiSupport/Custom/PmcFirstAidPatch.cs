@@ -22,7 +22,7 @@ namespace Aki.Custom.Patches
         [PatchPrefix]
         private static bool PatchPrefix(BotOwner ___botOwner_0)
         {
-            if (___botOwner_0.IsRole((WildSpawnType)0x29L) || ___botOwner_0.IsRole((WildSpawnType)0x2AL))
+            if (___botOwner_0.IsRole(WildSpawnType.sptUsec) || ___botOwner_0.IsRole(WildSpawnType.sptBear))
             {
                 var healthController = ___botOwner_0.GetPlayer.ActiveHealthController;
 
@@ -35,7 +35,7 @@ namespace Aki.Custom.Patches
                 healthController.RemoveNegativeEffects(EBodyPart.RightArm);
             }
 
-            return false; // skip original
+            return true; // Do original
         }
     }
 }
