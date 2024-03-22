@@ -6,8 +6,8 @@ using EFT.InventoryLogic;
 using EFT.UI;
 using EFT.Vehicle;
 using HarmonyLib;
-using StayInTarkov.AkiSupport.Singleplayer.Utils.InRaid;
 using StayInTarkov.AkiSupport.Singleplayer.Utils.TraderServices;
+using StayInTarkov.Coop.Matchmaker;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -65,16 +65,32 @@ namespace Aki.Custom.BTR
         {
             Logger = BepInEx.Logging.Logger.CreateLogSource("BTRManager");
             Logger.LogInfo("BTRManager.Awake");
-            Singleton<BTRManager>.Create(this);
             try
             {
+
                 gameWorld = Singleton<GameWorld>.Instance;
                 if (gameWorld == null)
                 {
+                    Logger.LogInfo("BTRManager:Waiting for gameWorld");
                     Destroy(this);
                     return;
                 }
-                gameWorld.LocationId = RaidChangesUtil.LocationId;
+
+                if (SITMatchmaking.IsClient) {
+                    if (Singleton<IBotGame>.Instance == null)
+                    {
+                        Logger.LogInfo("BTRManager:Waiting for IBotGame Instance");
+                        return;
+                    }
+                    else if (Singleton<IBotGame>.Instance.BotsController == null)
+                    {
+                        Logger.LogInfo("BTRManager:Waiting for BotsController");
+                        return;
+                    }
+                }
+
+                Singleton<BTRManager>.Create(this);
+
                 if (gameWorld.BtrController == null)
                 {
                     gameWorld.BtrController = new BTRControllerClass();
@@ -148,7 +164,8 @@ namespace Aki.Custom.BTR
 
         private void Update()
         {
-            btrController.SyncBTRVehicleFromServer(UpdateDataPacket());
+            if (SITMatchmaking.IsServer)
+                btrController.SyncBTRVehicleFromServer(UpdateDataPacket());
 
             if (btrController.BotShooterBtr == null) return;
 
@@ -180,34 +197,51 @@ namespace Aki.Custom.BTR
         {
             // Initial setup
             botEventHandler = Singleton<GClass598>.Instance;
+            ConsoleScreen.Log("[AKI-BTR] BTR Support - botEventHandler");
             var botsController = Singleton<IBotGame>.Instance.BotsController;
+            ConsoleScreen.Log("[AKI-BTR] BTR Support - botsController");
             btrBotService = botsController.BotTradersServices.BTRServices;
+            ConsoleScreen.Log("[AKI-BTR] BTR Support - btrBotService");
             btrController.method_3(); // spawns server-side BTR game object
-            botsController.BotSpawner.SpawnBotBTR(); // spawns the scav bot which controls the BTR's turret
+            ConsoleScreen.Log("[AKI-BTR] BTR Support - method_3");
+
+            if (SITMatchmaking.IsServer)
+                botsController.BotSpawner.SpawnBotBTR(); // spawns the scav bot which controls the BTR's turret
 
             // Initial BTR configuration
             btrServerSide = btrController.BtrVehicle;
             btrClientSide = btrController.BtrView;
             btrServerSide.transform.Find("KillBox").gameObject.AddComponent<BTRRoadKillTrigger>();
+            ConsoleScreen.Log("[AKI-BTR] BTR Support - BTRRoadKillTrigger");
 
             // Get config from server and initialise respective settings
             ConfigureSettingsFromServer();
+            ConsoleScreen.Log("[AKI-BTR] BTR Support - ConfigureSettingsFromServer");
 
-            var btrMapConfig = btrController.MapPathsConfiguration;
-            btrServerSide.CurrentPathConfig = btrMapConfig.PathsConfiguration.pathsConfigurations.RandomElement();
-            
-            btrServerSide.Initialization(btrMapConfig);
+            if (SITMatchmaking.IsServer)
+            {
+                var btrMapConfig = btrController.MapPathsConfiguration;
+                btrServerSide.CurrentPathConfig = btrMapConfig.PathsConfiguration.pathsConfigurations.RandomElement();
+                btrServerSide.Initialization(btrMapConfig);
+            }
+
             btrController.method_14(); // creates and assigns the BTR a fake stash
+            ConsoleScreen.Log("[AKI-BTR] BTR Support - method_14");
 
             DisableServerSideRenderers();
+            ConsoleScreen.Log("[AKI-BTR] BTR Support - DisableServerSideRenderers");
 
             gameWorld.MainPlayer.OnBtrStateChanged += HandleBtrDoorState;
+            ConsoleScreen.Log("[AKI-BTR] BTR Support - HandleBtrDoorState");
 
             btrServerSide.MoveEnable();
+            ConsoleScreen.Log("[AKI-BTR] BTR Support - MoveEnable");
             btrServerSide.IncomingToDestinationEvent += ToDestinationEvent;
+            ConsoleScreen.Log("[AKI-BTR] BTR Support - ToDestinationEvent");
 
             // Sync initial position and rotation
             UpdateDataPacket();
+            ConsoleScreen.Log("[AKI-BTR] BTR Support - UpdateDataPacket");
             btrClientSide.transform.position = btrDataPacket.position;
             btrClientSide.transform.rotation = btrDataPacket.rotation;
 
@@ -216,11 +250,14 @@ namespace Aki.Custom.BTR
             var btrTurretDefaultTargetTransform = (Transform)AccessTools.Field(btrTurretServer.GetType(), "defaultTargetTransform").GetValue(btrTurretServer);
             isTurretInDefaultRotation = btrTurretServer.targetTransform == btrTurretDefaultTargetTransform
                 && btrTurretServer.targetPosition == btrTurretServer.defaultAimingPosition;
+            ConsoleScreen.Log("[AKI-BTR] BTR Support - btrTurretDefaultTargetTransform");
             btrMachineGunAmmo = (BulletClass)BTRUtil.CreateItem(BTRUtil.BTRMachineGunAmmoTplId);
             btrMachineGunWeapon = BTRUtil.CreateItem(BTRUtil.BTRMachineGunWeaponTplId);
+            ConsoleScreen.Log("[AKI-BTR] BTR Support - btrMachineGunWeapon");
 
             // Pull services data for the BTR from the server
             TraderServicesManager.Instance.GetTraderServicesDataFromServer(BTRUtil.BTRTraderId);
+            ConsoleScreen.Log("[AKI-BTR] BTR Support - GetTraderServicesDataFromServer");
         }
 
         private void ConfigureSettingsFromServer()
@@ -393,11 +430,13 @@ namespace Aki.Custom.BTR
 
         private void UpdateTarget()
         {
+            if (SITMatchmaking.IsClient) return;
             currentTarget = btrBotShooter.Memory.GoalEnemy;
         }
 
         private bool HasTarget()
         {
+            if (SITMatchmaking.IsClient) return false;
             if (currentTarget != null)
             {
                 return true;

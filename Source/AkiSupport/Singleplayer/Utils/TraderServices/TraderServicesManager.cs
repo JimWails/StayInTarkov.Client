@@ -85,7 +85,6 @@ namespace StayInTarkov.AkiSupport.Singleplayer.Utils.TraderServices
                 {
                     SessionId = player.Profile.ProfileId
                 }.ToJson());
-                //var json = AkiBackendCommunication.Instance.GetJson($"/singleplayer/traderServices/getTraderServices/{traderId}");
                 var traderServiceModels = JsonConvert.DeserializeObject<List<TraderServiceModel>>(json);
 
                 foreach (var traderServiceModel in traderServiceModels)
