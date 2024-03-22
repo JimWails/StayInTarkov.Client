@@ -13,10 +13,15 @@ using TraderServiceClass = TraderServiceAvailabilityData;
 using QuestDictClass = GClass2133<string>;
 using StandingListClass = GClass2135<float>;
 using StayInTarkov.Networking;
-using UnityEngine.Networking.Match;
+using EFT.UI;
 
 namespace StayInTarkov.AkiSupport.Singleplayer.Utils.TraderServices
 {
+    /// <summary>
+    /// Created by: SPT-Aki team
+    /// Link: https://dev.sp-tarkov.com/SPT-AKI/Modules/src/branch/3.8.0/project/Aki.SinglePlayer/Utils/TraderServices/TraderServicesManager.cs
+    /// Modified by: KWJimWails. Modified to use SIT ModulePatch
+    /// </summary>
     public class TraderServicesManager
     {
         /// <summary>
