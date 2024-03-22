@@ -24,7 +24,7 @@ namespace Aki.Custom.Models
             var loadTask = Singleton<PoolManager>.Instance.LoadBundlesAndCreatePools(
                 PoolManager.PoolsCategory.Raid,
                 PoolManager.AssemblyType.Local,
-                Profile.GetAllPrefabPaths(false).Where(x => !x.IsNullOrEmpty()).ToArray(),
+                Profile.GetAllPrefabPaths(false).ToArray(),
                 JobPriority.General,
                 null,
                 default(CancellationToken));

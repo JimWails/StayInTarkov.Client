@@ -50,7 +50,7 @@ namespace StayInTarkov.Coop.NetworkPacket.Player
 
         public override byte[] Serialize()
         {
-            using MemoryStream ms = new MemoryStream();
+            var ms = new MemoryStream();
             using BinaryWriter writer = new BinaryWriter(ms);
             WriteHeaderAndProfileId(writer);
             return ms.ToArray();
