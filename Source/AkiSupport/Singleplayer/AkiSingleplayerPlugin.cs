@@ -53,6 +53,7 @@ namespace StayInTarkov.AkiSupport.Singleplayer
                 new ScavEncyclopediaPatch().Enable();
                 new ScavItemCheckmarkPatch().Enable();
                 new IsHostileToEverybodyPatch().Enable();
+                new ScavRepAdjustmentPatch().Enable();
 
                 // LK Patches
                 new SpawnPmcPatch().Enable();
