@@ -61,7 +61,7 @@ namespace StayInTarkov.Coop.Controllers.CoopInventory
             // Paulov: Fix issue with unload magazines
             if (operation != null && operation.GetType() == typeof(UnloadAmmoOperation))
             {
-                //IgnoreOperations.Add(operation.Id);
+                IgnoreOperations.Add(operation.Id);
 
                 base.Execute(operation, callback);
                 SendExecuteOperationToServer(operation);
