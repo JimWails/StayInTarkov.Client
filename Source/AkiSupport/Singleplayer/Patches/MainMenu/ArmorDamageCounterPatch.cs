@@ -1,7 +1,7 @@
-﻿using EFT;
+﻿using Comfort.Common;
+using EFT;
 using EFT.InventoryLogic;
 using HarmonyLib;
-using StayInTarkov;
 using System;
 using System.Reflection;
 
@@ -32,20 +32,20 @@ namespace StayInTarkov.AkiSupport.Singleplayer.Patches.MainMenu
                 return;
             }
 
-            if (damageInfo.Player.iPlayer.IsYourPlayer == null)
-            {
-                return;
-            }
-
             if (!damageInfo.Player.iPlayer.IsYourPlayer)
             {
                 return;
             }
 
-            if (damageInfo.Weapon is Weapon weapon && weapon.Chambers[0].ContainedItem is BulletClass bullet)
+            if (damageInfo.Weapon is Weapon)
             {
-                float newDamage = (float)Math.Round(bullet.Damage - damageInfo.Damage);
-                damageInfo.Player.iPlayer.Profile.EftStats.SessionCounters.AddFloat(newDamage, GClass2200.CauseArmorDamage);
+                if (!Singleton<ItemFactory>.Instance.ItemTemplates.TryGetValue(damageInfo.SourceId, out var template))
+                {
+                    return;
+                }
+
+                float absorbedDamage = (float)Math.Round((template as AmmoTemplate).Damage - damageInfo.Damage);
+                damageInfo.Player.iPlayer.Profile.EftStats.SessionCounters.AddFloat(absorbedDamage, GClass2200.CauseArmorDamage);
             }
         }
     }
