@@ -22,27 +22,58 @@ namespace StayInTarkov.Coop.NetworkPacket.Player
             PlayerStates = statePackets;
         }
 
+        //public override byte[] Serialize()
+        //{
+        //    using MemoryStream ms = new MemoryStream();
+        //    using BinaryWriter binaryWriter = new BinaryWriter(ms);
+        //    WriteHeader(binaryWriter);
+        //    binaryWriter.Write(PlayerStates.Length);
+        //    foreach (var state in PlayerStates)
+        //        binaryWriter.WriteLengthPrefixedBytes(state.Serialize());
+        //    binaryWriter.Write(TimeSerializedBetter);
+        //    return ms.ToArray();
+        //}
+
         public override byte[] Serialize()
         {
-            using var ms = new MemoryStream();
-            using BinaryWriter binaryWriter = new BinaryWriter(ms);
-            WriteHeader(binaryWriter);
-            binaryWriter.Write(PlayerStates.Length);
-            foreach (var state in PlayerStates)
-                binaryWriter.WriteLengthPrefixedBytes(state.Serialize());
-            binaryWriter.Write(TimeSerializedBetter);
-            return ms.ToArray();
+            using (MemoryStream ms = new MemoryStream())
+            using (BinaryWriter binaryWriter = new BinaryWriter(ms))
+            {
+                WriteHeader(binaryWriter);
+                binaryWriter.Write(PlayerStates.Length);
+                foreach (var state in PlayerStates)
+                    binaryWriter.WriteLengthPrefixedBytes(state.Serialize());
+                binaryWriter.Write(TimeSerializedBetter);
+                return ms.ToArray();
+            }
         }
+
+        //public override ISITPacket Deserialize(byte[] bytes)
+        //{
+        //    using BinaryReader reader = new BinaryReader(new MemoryStream(bytes));
+        //    ReadHeader(reader);
+        //    var length = reader.ReadInt32();
+        //    PlayerStates = new PlayerStatePacket[length];
+        //    for (var i = 0; i < length; i++)
+        //        PlayerStates[i] = new PlayerStatePacket().Deserialize(reader.ReadLengthPrefixedBytes()) as PlayerStatePacket;
+        //    TimeSerializedBetter = reader.ReadString();
+        //    return this;
+        //}
 
         public override ISITPacket Deserialize(byte[] bytes)
         {
-            using BinaryReader reader = new BinaryReader(new MemoryStream(bytes));
-            ReadHeader(reader);
-            var length = reader.ReadInt32();
-            PlayerStates = new PlayerStatePacket[length];
-            for (var i = 0; i < length; i++)
-                PlayerStates[i] = new PlayerStatePacket().Deserialize(reader.ReadLengthPrefixedBytes()) as PlayerStatePacket;
-            TimeSerializedBetter = reader.ReadString();
+            using (BinaryReader reader = new BinaryReader(new MemoryStream(bytes)))
+            {
+                ReadHeader(reader);
+                var length = reader.ReadInt32();
+                PlayerStates = new PlayerStatePacket[length];
+                for (var i = 0; i < length; i++)
+                {
+                    var stateBytes = reader.ReadLengthPrefixedBytes();
+                    PlayerStates[i] = new PlayerStatePacket().Deserialize(stateBytes) as PlayerStatePacket;
+                }
+                TimeSerializedBetter = reader.ReadString();
+            }
             return this;
         }
 
@@ -55,19 +86,19 @@ namespace StayInTarkov.Coop.NetworkPacket.Player
                 PlayerStates[i].Process();
         }
 
-        protected override void Dispose(bool disposing)
-        {
-            if (!disposedValue)
-            {
-                //StayInTarkovHelperConstants.Logger.LogInfo($"{nameof(PlayerStatesPacket)}:{nameof(Dispose)}");
-                for (var i = 0; i < PlayerStates.Length; i++)
-                {
-                    PlayerStates[i].Dispose();
-                    PlayerStates[i] = null;
-                }
-                PlayerStates = null;
-            }
-            base.Dispose(disposing);
-        }
+        //protected override void Dispose(bool disposing)
+        //{
+        //    if (!disposedValue)
+        //    {
+        //        //StayInTarkovHelperConstants.Logger.LogInfo($"{nameof(PlayerStatesPacket)}:{nameof(Dispose)}");
+        //        for (var i = 0; i < PlayerStates.Length; i++)
+        //        {
+        //            PlayerStates[i].Dispose();
+        //            PlayerStates[i] = null;
+        //        }
+        //        PlayerStates = null;
+        //    }
+        //    base.Dispose(disposing);
+        //}
     }
 }

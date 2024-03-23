@@ -18,7 +18,7 @@ namespace StayInTarkov.Coop.NetworkPacket.Player.Health
 
         public override byte[] Serialize()
         {
-            var ms = new MemoryStream();
+            using MemoryStream ms = new MemoryStream();
             using BinaryWriter binaryWriter = new BinaryWriter(ms);
             WriteHeader(binaryWriter);
             binaryWriter.Write(PlayerHealthCollection.Length);
