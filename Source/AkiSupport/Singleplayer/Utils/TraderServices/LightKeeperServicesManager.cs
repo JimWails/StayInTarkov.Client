@@ -3,6 +3,7 @@ using BepInEx.Logging;
 using Comfort.Common;
 using EFT;
 using HarmonyLib.Tools;
+using StayInTarkov.Coop.Matchmaker;
 using UnityEngine;
 
 namespace StayInTarkov.AkiSupport.Singleplayer.Utils.TraderServices
@@ -27,6 +28,13 @@ namespace StayInTarkov.AkiSupport.Singleplayer.Utils.TraderServices
             if (gameWorld == null || TraderServicesManager.Instance == null)
             {
                 logger.LogError("[AKI-LKS] GameWorld or TraderServices null");
+                Destroy(this);
+                return;
+            }
+
+            if (SITMatchmaking.IsClient)
+            {
+                logger.LogError("[AKI-LKS] Your are client, wait for server load manager.");
                 Destroy(this);
                 return;
             }

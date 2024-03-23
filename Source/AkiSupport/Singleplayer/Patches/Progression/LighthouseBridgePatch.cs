@@ -3,6 +3,7 @@ using EFT;
 using HarmonyLib;
 using StayInTarkov.AkiSupport.Singleplayer.Components;
 using StayInTarkov.AkiSupport.Singleplayer.Utils.InRaid;
+using StayInTarkov.Coop.Matchmaker;
 using System.Reflection;
 
 namespace StayInTarkov.AkiSupport.Singleplayer.Patches.Progression
@@ -28,7 +29,7 @@ namespace StayInTarkov.AkiSupport.Singleplayer.Patches.Progression
                 return;
             }
 
-            if (gameWorld.MainPlayer.Location.ToLower() != "lighthouse" || gameWorld.MainPlayer.Side == EPlayerSide.Savage)
+            if (gameWorld.MainPlayer.Location.ToLower() != "lighthouse" || gameWorld.MainPlayer.Side == EPlayerSide.Savage || SITMatchmaking.IsClient)
             {
                 return;
             }

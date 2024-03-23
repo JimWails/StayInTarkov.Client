@@ -87,7 +87,8 @@ namespace StayInTarkov.Coop.Players
                , () => Singleton<SettingsManager>.Instance.Control.Settings.MouseSensitivity
                , () => Singleton<SettingsManager>.Instance.Control.Settings.MouseAimingSensitivity
                , FilterCustomizationClass.Default
-               , null
+               , questController
+               , achievementsController
                , isYourPlayer: false
                , isClientDrone: true
                );

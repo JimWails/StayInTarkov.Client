@@ -1,5 +1,7 @@
-﻿using Comfort.Common;
+﻿using BepInEx.Logging;
+using Comfort.Common;
 using EFT;
+using StayInTarkov.AkiSupport.Singleplayer.Utils.TraderServices;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -11,6 +13,7 @@ namespace StayInTarkov.AkiSupport.Singleplayer.Components
     /// </summary>
     public class LighthouseProgressionComponent : MonoBehaviour
     {
+        private ManualLogSource Logger;
         private GameWorld _gameWorld;
         private Player _player;
         private float _timer;
@@ -24,6 +27,7 @@ namespace StayInTarkov.AkiSupport.Singleplayer.Components
 
         public void Start()
         {
+            Logger = BepInEx.Logging.Logger.CreateLogSource(nameof(LighthouseProgressionComponent));
             _gameWorld = Singleton<GameWorld>.Instance;
             _player = _gameWorld?.MainPlayer;
 
@@ -140,34 +144,49 @@ namespace StayInTarkov.AkiSupport.Singleplayer.Components
         /// </summary>
         private void SetupZryachiyAndFollowerHostility()
         {
-            // only process non-players (ai)
-            foreach (var aiBot in _gameWorld.AllAlivePlayersList.Where(x => !x.IsYourPlayer))
+            if (_gameWorld.AllAlivePlayersList == null)
             {
-                // Bots that die on mounted guns get stuck in AllAlivePlayersList, need to check health
-                if (!aiBot.HealthController.IsAlive)
-                {
-                    continue;
-                }
+                Logger.LogInfo("AllAlivePlayersList == null");
+                return;
+            }
 
-                // Edge case of bossZryachiy not being hostile to player
-                if (aiBot.AIData.BotOwner.IsRole(WildSpawnType.bossZryachiy) || aiBot.AIData.BotOwner.IsRole(WildSpawnType.followerZryachiy))
+            if (_gameWorld.AllAlivePlayersList.Count > 0)
+            {
+                Logger.LogInfo("SetupZryachiyAndFollowerHostility > 0");
+                // only process non-players (ai)
+                foreach (var aiBot in _gameWorld.AllAlivePlayersList.Where(x => !x.IsYourPlayer))
                 {
-                    // Subscribe to bots OnDeath event
-                    aiBot.OnPlayerDeadOrUnspawn += player1 =>
+                    if (aiBot.HealthController == null) 
                     {
-                        // If player kills zryachiy or follower, force aggressor state
-                        // Also set players Lk standing to negative (allows access to quest chain (Making Amends))
-                        if (player1?.KillerId == _player?.ProfileId)
+                        Logger.LogInfo("aiBot.HealthController == null");
+                        return;
+                    }
+                    // Bots that die on mounted guns get stuck in AllAlivePlayersList, need to check health
+                    if (!aiBot.HealthController.IsAlive)
+                    {
+                        continue;
+                    }
+
+                    // Edge case of bossZryachiy not being hostile to player
+                    if (aiBot.AIData.BotOwner.IsRole(WildSpawnType.bossZryachiy) || aiBot.AIData.BotOwner.IsRole(WildSpawnType.followerZryachiy))
+                    {
+                        // Subscribe to bots OnDeath event
+                        aiBot.OnPlayerDeadOrUnspawn += player1 =>
                         {
-                            _aggressor = true;
-                            _player?.Profile.TradersInfo[_lightKeeperTid].SetStanding(-0.01);
-                        }
-                    };
+                            // If player kills zryachiy or follower, force aggressor state
+                            // Also set players Lk standing to negative (allows access to quest chain (Making Amends))
+                            if (player1?.KillerId == _player?.ProfileId)
+                            {
+                                _aggressor = true;
+                                _player?.Profile.TradersInfo[_lightKeeperTid].SetStanding(-0.01);
+                            }
+                        };
 
-                    // Save bot to list for later access
-                    if (!_zryachiyAndFollowers.Contains(aiBot))
-                    {
-                        _zryachiyAndFollowers.Add(aiBot);
+                        // Save bot to list for later access
+                        if (!_zryachiyAndFollowers.Contains(aiBot))
+                        {
+                            _zryachiyAndFollowers.Add(aiBot);
+                        }
                     }
                 }
             }
