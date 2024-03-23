@@ -1,6 +1,7 @@
 ﻿using BepInEx.Logging;
 using Comfort.Common;
 using EFT;
+using StayInTarkov.AkiSupport.Singleplayer.Utils.TraderServices;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -145,8 +146,21 @@ namespace StayInTarkov.AkiSupport.Singleplayer.Components
         {
             if (_gameWorld.AllAlivePlayersList == null)
             {
+                Logger.LogInfo("AllAlivePlayersList == null");
+                return;
+            }
+
+            if (_gameWorld.AllAlivePlayersList.Count > 0)
+            {
+                Logger.LogInfo("SetupZryachiyAndFollowerHostility > 0");
+                // only process non-players (ai)
                 foreach (var aiBot in _gameWorld.AllAlivePlayersList.Where(x => !x.IsYourPlayer))
                 {
+                    if (aiBot.HealthController == null)
+                    {
+                        Logger.LogInfo("aiBot.HealthController == null");
+                        return;
+                    }
                     // Bots that die on mounted guns get stuck in AllAlivePlayersList, need to check health
                     if (!aiBot.HealthController.IsAlive)
                     {
@@ -156,37 +170,22 @@ namespace StayInTarkov.AkiSupport.Singleplayer.Components
                     // Edge case of bossZryachiy not being hostile to player
                     if (aiBot.AIData.BotOwner.IsRole(WildSpawnType.bossZryachiy) || aiBot.AIData.BotOwner.IsRole(WildSpawnType.followerZryachiy))
                     {
-                        if (aiBot.HealthController == null)
+                        // Subscribe to bots OnDeath event
+                        aiBot.OnPlayerDeadOrUnspawn += player1 =>
                         {
-                            Logger.LogInfo("aiBot.HealthController == null");
-                            return;
-                        }
-                        // Bots that die on mounted guns get stuck in AllAlivePlayersList, need to check health
-                        if (!aiBot.HealthController.IsAlive)
-                        {
-                            continue;
-                        }
-
-                        // Edge case of bossZryachiy not being hostile to player
-                        if (aiBot.AIData.BotOwner.IsRole(WildSpawnType.bossZryachiy) || aiBot.AIData.BotOwner.IsRole(WildSpawnType.followerZryachiy))
-                        {
-                            // Subscribe to bots OnDeath event
-                            aiBot.OnPlayerDeadOrUnspawn += player1 =>
+                            // If player kills zryachiy or follower, force aggressor state
+                            // Also set players Lk standing to negative (allows access to quest chain (Making Amends))
+                            if (player1?.KillerId == _player?.ProfileId)
                             {
-                                // If player kills zryachiy or follower, force aggressor state
-                                // Also set players Lk standing to negative (allows access to quest chain (Making Amends))
-                                if (player1?.KillerId == _player?.ProfileId)
-                                {
-                                    _aggressor = true;
-                                    _player?.Profile.TradersInfo[_lightKeeperTid].SetStanding(-0.01);
-                                }
-                            };
-
-                            // Save bot to list for later access
-                            if (!_zryachiyAndFollowers.Contains(aiBot))
-                            {
-                                _zryachiyAndFollowers.Add(aiBot);
+                                _aggressor = true;
+                                _player?.Profile.TradersInfo[_lightKeeperTid].SetStanding(-0.01);
                             }
+                        };
+
+                        // Save bot to list for later access
+                        if (!_zryachiyAndFollowers.Contains(aiBot))
+                        {
+                            _zryachiyAndFollowers.Add(aiBot);
                         }
                     }
                 }
