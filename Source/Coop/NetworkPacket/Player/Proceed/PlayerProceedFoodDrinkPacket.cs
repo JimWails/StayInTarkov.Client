@@ -33,7 +33,7 @@ namespace StayInTarkov.Coop.NetworkPacket.Player.Proceed
         {
             //StayInTarkovHelperConstants.Logger.LogDebug($"{nameof(PlayerProceedFoodDrinkPacket)}:{nameof(Serialize)}"); 
 
-            var ms = new MemoryStream();
+            using MemoryStream ms = new MemoryStream();
             using BinaryWriter writer = new BinaryWriter(ms);
             WriteHeaderAndProfileId(writer);
             writer.Write(ItemId);

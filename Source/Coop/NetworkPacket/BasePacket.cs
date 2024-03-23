@@ -201,7 +201,7 @@ namespace StayInTarkov.Coop.NetworkPacket
         /// <returns></returns>
         public virtual byte[] Serialize()
         {
-            var ms = new MemoryStream();
+            using MemoryStream ms = new MemoryStream();
             using BinaryWriter writer = new BinaryWriter(ms);
             WriteHeader(writer);
             return ms.ToArray();

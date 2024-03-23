@@ -69,7 +69,7 @@ namespace StayInTarkov.Coop.NetworkPacket.Player
 
         public override byte[] Serialize()
         {
-            var ms = new MemoryStream();
+            using MemoryStream ms = new MemoryStream();
             using BinaryWriter writer = new BinaryWriter(ms);
             WriteHeaderAndProfileId(writer);
             writer.Write(ItemId);

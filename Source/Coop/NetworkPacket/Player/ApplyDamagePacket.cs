@@ -36,45 +36,91 @@ namespace StayInTarkov.Coop.NetworkPacket.Player
         public string AggressorWeaponId { get; set; }
         public string AggressorWeaponTpl { get; set; }
 
+        //public override byte[] Serialize()
+        //{
+        //    using MemoryStream ms = new MemoryStream();
+        //    using BinaryWriter writer = new BinaryWriter(ms);
+        //    WriteHeaderAndProfileId(writer);
+        //    writer.Write((uint)DamageType);
+        //    writer.Write(Damage);
+        //    writer.Write((byte)BodyPart);
+        //    writer.Write((byte)ColliderType);
+        //    writer.Write(Absorbed);
+
+        //    writer.Write(!string.IsNullOrEmpty(AggressorProfileId));
+        //    if(!string.IsNullOrEmpty(AggressorProfileId))
+        //    {
+        //        writer.Write(AggressorProfileId);
+        //        writer.Write(AggressorWeaponId);
+        //        writer.Write(AggressorWeaponTpl);
+        //    }
+        //    return ms.ToArray();
+        //}
+
         public override byte[] Serialize()
         {
-            using var ms = new MemoryStream();
-            using BinaryWriter writer = new BinaryWriter(ms);
-            WriteHeaderAndProfileId(writer);
-            writer.Write((uint)DamageType);
-            writer.Write(Damage);
-            writer.Write((byte)BodyPart);
-            writer.Write((byte)ColliderType);
-            writer.Write(Absorbed);
-
-            writer.Write(!string.IsNullOrEmpty(AggressorProfileId));
-            if(!string.IsNullOrEmpty(AggressorProfileId))
+            using (MemoryStream ms = new MemoryStream())
             {
-                writer.Write(AggressorProfileId);
-                writer.Write(AggressorWeaponId);
-                writer.Write(AggressorWeaponTpl);
+                using (BinaryWriter writer = new BinaryWriter(ms))
+                {
+                    WriteHeaderAndProfileId(writer);
+                    writer.Write((uint)DamageType);
+                    writer.Write(Damage);
+                    writer.Write((byte)BodyPart);
+                    writer.Write((byte)ColliderType);
+                    writer.Write(Absorbed);
+
+                    writer.Write(!string.IsNullOrEmpty(AggressorProfileId));
+                    if (!string.IsNullOrEmpty(AggressorProfileId))
+                    {
+                        writer.Write(AggressorProfileId);
+                        writer.Write(AggressorWeaponId);
+                        writer.Write(AggressorWeaponTpl);
+                    }
+                }
+                return ms.ToArray();
             }
-            return ms.ToArray();
         }
+
+        //public override ISITPacket Deserialize(byte[] bytes)
+        //{
+        //    using BinaryReader reader = new BinaryReader(new MemoryStream(bytes));
+        //    ReadHeaderAndProfileId(reader);
+        //    DamageType = (EDamageType)reader.ReadUInt32();
+        //    Damage = reader.ReadSingle();
+        //    BodyPart = (EBodyPart)reader.ReadByte();
+        //    ColliderType = (EBodyPartColliderType)reader.ReadByte();
+        //    Absorbed = reader.ReadSingle();
+
+        //    var hasAggressor = reader.ReadBoolean();
+        //    if (hasAggressor)
+        //    {
+        //        AggressorProfileId = reader.ReadString();
+        //        AggressorWeaponId = reader.ReadString();
+        //        AggressorWeaponTpl = reader.ReadString();
+        //    }
+
+        //    return this;
+        //}
 
         public override ISITPacket Deserialize(byte[] bytes)
         {
-            using BinaryReader reader = new BinaryReader(new MemoryStream(bytes));
-            ReadHeaderAndProfileId(reader);
-            DamageType = (EDamageType)reader.ReadUInt32();
-            Damage = reader.ReadSingle();
-            BodyPart = (EBodyPart)reader.ReadByte();
-            ColliderType = (EBodyPartColliderType)reader.ReadByte();
-            Absorbed = reader.ReadSingle();
-
-            var hasAggressor = reader.ReadBoolean();
-            if (hasAggressor)
+            using (BinaryReader reader = new BinaryReader(new MemoryStream(bytes)))
             {
-                AggressorProfileId = reader.ReadString();
-                AggressorWeaponId = reader.ReadString();
-                AggressorWeaponTpl = reader.ReadString();
-            }
+                ReadHeaderAndProfileId(reader);
+                DamageType = (EDamageType)reader.ReadUInt32();
+                Damage = reader.ReadSingle();
+                BodyPart = (EBodyPart)reader.ReadByte();
+                ColliderType = (EBodyPartColliderType)reader.ReadByte();
+                Absorbed = reader.ReadSingle();
 
+                if (reader.ReadBoolean())
+                {
+                    AggressorProfileId = reader.ReadString();
+                    AggressorWeaponId = reader.ReadString();
+                    AggressorWeaponTpl = reader.ReadString();
+                }
+            }
             return this;
         }
 
