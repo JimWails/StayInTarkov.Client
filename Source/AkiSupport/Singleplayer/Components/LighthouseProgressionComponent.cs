@@ -44,22 +44,21 @@ namespace StayInTarkov.AkiSupport.Singleplayer.Components
                 return;
             }
 
-            if (SITMatchmaking.IsClient) {
-                Destroy(this);
-
-                return;
-            }
-
             // Get transmitter from players inventory
             _transmitter = GetTransmitterFromInventory();
 
-            // Exit if transmitter does not exist and isnt green
-            if (!PlayerHasActiveTransmitterInInventory())
-            {
-                Destroy(this);
+            var Access = false;
 
-                return;
+            // Exit if transmitter does not exist and isnt green
+            if (PlayerHasActiveTransmitterInInventory())
+            {
+                Access = true;
             }
+
+            // Give access to Lightkeepers door
+            _gameWorld.BufferZoneController.SetPlayerAccessStatus(_player.ProfileId, Access);
+
+            if (SITMatchmaking.IsClient) { return; }
 
             var places = Singleton<IBotGame>.Instance.BotsController.CoversData.AIPlaceInfoHolder.Places;
 
@@ -67,9 +66,6 @@ namespace StayInTarkov.AkiSupport.Singleplayer.Components
 
             // Zone was added in a newer version and the gameObject actually has a \
             places.First(y => y.name == "CloseZone\\").gameObject.SetActive(false);
-
-            // Give access to Lightkeepers door
-            _gameWorld.BufferZoneController.SetPlayerAccessStatus(_player.ProfileId, true);
 
             _bridgeMines = _gameWorld.MineManager.Mines; 
             minesActiveStatus = new Dictionary<int, int>();
@@ -93,12 +89,10 @@ namespace StayInTarkov.AkiSupport.Singleplayer.Components
             // Player not an enemy to Zryachiy
             // Lk door not accessible
             // Player has no transmitter on thier person
-            if (_gameWorld == null || _isDoorDisabled || _transmitter == null)
+            if (_gameWorld == null || _isDoorDisabled)
             {
                 return;
             }
-
-            UpdateBridgeMineStatus();
 
             // Find Zryachiy and prep him
             if (_zryachiyAndFollowers.Count == 0)
@@ -111,6 +105,12 @@ namespace StayInTarkov.AkiSupport.Singleplayer.Components
             {
                 DisableAccessToLightKeeper();
             }
+        }
+
+        public void FixedUpdate()
+        {
+            if (SITMatchmaking.IsClient) { return; }
+            UpdateBridgeMineStatus();
         }
 
         /// <summary>
@@ -258,7 +258,8 @@ namespace StayInTarkov.AkiSupport.Singleplayer.Components
                         }
                         else
                         {
-                            if (player.HandsController.Item.TemplateId == _transmitterId)
+                            var ReallPlayer = Singleton<GameWorld>.Instance.GetAlivePlayerByProfileID(player.ProfileId);
+                            if (ReallPlayer.HandsController.Item.TemplateId == _transmitterId || !ReallPlayer.IsYourPlayer)
                             {
                                 if (minesActiveStatus[mineInstanceID] == 1)
                                 {
