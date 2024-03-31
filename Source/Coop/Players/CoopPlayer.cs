@@ -288,7 +288,9 @@ namespace StayInTarkov.Coop.Players
                 }
             }
 
+#if DEBUG
             BepInLogger.LogDebug($"{nameof(ApplyDamageInfo)}:{ProfileId}:{damageInfo.DamageType}:{damageInfo.Damage}");
+#endif
             base.ApplyDamageInfo(damageInfo, bodyPartType, bodyPartColliderType, absorbed);
 
             yield break;

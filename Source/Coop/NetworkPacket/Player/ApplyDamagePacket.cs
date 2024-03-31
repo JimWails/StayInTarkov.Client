@@ -107,7 +107,9 @@ namespace StayInTarkov.Coop.NetworkPacket.Player
             if (Method != nameof(ApplyDamagePacket))
                 return;
 
+#if DEBUG
             StayInTarkovHelperConstants.Logger.LogDebug($"{GetType()}:{nameof(Process)}");
+#endif
 
             DamageInfo damageInfo = default(DamageInfo);
             damageInfo.Damage = this.Damage;
