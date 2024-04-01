@@ -24,6 +24,7 @@ using System.Reflection;
 using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.Profiling;
+using static UnityEngine.UIElements.StyleVariableResolver;
 
 namespace StayInTarkov.Coop.Components
 {
@@ -106,18 +107,16 @@ namespace StayInTarkov.Coop.Components
 
             if (ActionSITPackets.Count > 0)
             {
-                Stopwatch stopwatchActionPackets = Stopwatch.StartNew();
-                while (ActionSITPackets.TryTake(out var packet))
+                //Stopwatch stopwatchActionPackets = Stopwatch.StartNew();
+                while (ActionSITPackets.TryTake(out var result))
                 {
                     
-                    Stopwatch stopwatchActionPacket = Stopwatch.StartNew();
-                    packet.Process();
-
-                    if (stopwatchActionPacket.ElapsedMilliseconds > 1)
-                        Logger.LogDebug($"ActionSITPacket {packet.Method} took {stopwatchActionPacket.ElapsedMilliseconds}ms to process!");
+                    //Stopwatch stopwatchActionPacket = Stopwatch.StartNew();
+                    if (!ProcessSITActionPackets(result))
+                    {
+                        continue;
+                    }
                 }
-                if (stopwatchActionPackets.ElapsedMilliseconds > 1)
-                    Logger.LogDebug($"ActionSITPackets took {stopwatchActionPackets.ElapsedMilliseconds}ms to process!");
             }
 
             if (ActionPackets.Count > 0)
@@ -133,10 +132,18 @@ namespace StayInTarkov.Coop.Components
                     }
 
                     if (stopwatchActionPacket.ElapsedMilliseconds > 1)
+                    {
+#if DEBUG
                         Logger.LogDebug($"ActionPacket {result["m"]} took {stopwatchActionPacket.ElapsedMilliseconds}ms to process!");
+#endif
+                    }
                 }
                 if (stopwatchActionPackets.ElapsedMilliseconds > 1)
-                    Logger.LogDebug($"ActionPackets took {stopwatchActionPackets.ElapsedMilliseconds}ms to process!");
+                {
+#if DEBUG
+                    Logger.LogDebug($"ActionPackets took {stopwatchActionPackets.ElapsedMilliseconds}ms to process!"); 
+#endif
+                }
             }
 
             if (ActionPacketsMovement != null && ActionPacketsMovement.Count > 0)
@@ -152,7 +159,9 @@ namespace StayInTarkov.Coop.Components
                 }
                 if (stopwatchActionPacketsMovement.ElapsedMilliseconds > 1)
                 {
+#if DEBUG
                     Logger.LogDebug($"ActionPacketsMovement took {stopwatchActionPacketsMovement.ElapsedMilliseconds}ms to process!");
+#endif
                 }
             }
 
