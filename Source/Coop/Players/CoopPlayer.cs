@@ -84,19 +84,18 @@ namespace StayInTarkov.Coop.Players
                     , getAimingSensitivity
                     , prefix
                     , aiControl);
-               
             }
             player.IsYourPlayer = isYourPlayer;
             player.Position = position;
 
-            InventoryControllerClass inventoryController = player is CoopPlayerClient 
+            InventoryControllerClass inventoryController = player is CoopPlayerClient
                 ? new CoopInventoryControllerClient(player, profile, false, initialMongoId)
                 : new CoopInventoryController(player, profile, false);
             player.BepInLogger.LogDebug($"{inventoryController.GetType().Name} Instantiated");
 
             foreach (var item in profile.Inventory.AllRealPlayerItems)
             {
-                if(item.Owner == null)
+                if (item.Owner == null)
                 {
                     player.BepInLogger.LogInfo("Owner is null. wtf");
                 }
@@ -123,7 +122,7 @@ namespace StayInTarkov.Coop.Players
             //IHealthController healthController = isClientDrone
             //? new PlayerHealthController(profile.Health, player, inventoryController, profile.Skills, true)//   new CoopHealthControllerClient(profile.Health, player, inventoryController, profile.Skills, isClientDrone ? false : aiControl)
             //: new CoopHealthController(profile.Health, player, inventoryController, profile.Skills, isClientDrone ? false : aiControl);
-            IHealthController healthController = 
+            IHealthController healthController =
                 // aiControl = true is VITAL, otherwise items will not be used!
                 // found the fault is caused by aiControl allows ManualUpdate to be used
                 //isClientDrone ? new PlayerHealthController(profile.Health, player, inventoryController, profile.Skills, true) 
@@ -416,7 +415,7 @@ namespace StayInTarkov.Coop.Players
 
         public virtual void ReceivePlayerStatePacket(PlayerStatePacket playerStatePacket)
         {
-           
+
         }
 
         protected virtual void Interpolate()
@@ -487,7 +486,7 @@ namespace StayInTarkov.Coop.Players
             {
                 return $"{UsedItem}:{PreviousAmount}:{NewValue}";
             }
-        } 
+        }
 
         protected SITPostProceedData? PostProceedData { get; set; }
         public bool TriggerPressed { get; internal set; }
@@ -533,7 +532,7 @@ namespace StayInTarkov.Coop.Players
             new Process<MedsController, IMedsController>(this, controllerFactory, meds).method_0(null, (x) => {
                 PostProceedData = new SITPostProceedData { PreviousAmount = startResource, UsedItem = meds, HandsController = x.Value };
                 callback(x);
-            },false);
+            }, false);
 
             // Extra unneccessary protection
             if (this is CoopPlayer)
@@ -559,7 +558,7 @@ namespace StayInTarkov.Coop.Players
             new Process<SITGrenadeController, IThrowableCallback>(this, controllerFactory, throwWeap).method_0(null, callback, scheduled);
 
             PlayerProceedGrenadePacket packet = new PlayerProceedGrenadePacket(ProfileId, throwWeap.Id, scheduled);
-            GameClient.SendData(packet.Serialize());    
+            GameClient.SendData(packet.Serialize());
         }
 
         public override void Proceed(Item item, Callback<IQuickUseController> callback, bool scheduled = true)
@@ -579,7 +578,6 @@ namespace StayInTarkov.Coop.Players
                 fastHide = firearmController.CheckForFastWeaponSwitch(weapon);
             }
             new Process<FirearmController, IFirearmHandsController>(this, controllerFactory, weapon, fastHide).method_0(null, callback, scheduled);
-            
             PlayerProceedWeaponPacket weaponPacket = new PlayerProceedWeaponPacket();
             weaponPacket.ProfileId = this.ProfileId;
             weaponPacket.ItemId = weapon.Id;
@@ -604,8 +602,6 @@ namespace StayInTarkov.Coop.Players
                     }
 
                 }, callback, scheduled);
-
-            
         }
 
         public override void Proceed(KnifeComponent knife, Callback<IQuickKnifeKickController> callback, bool scheduled = true)
@@ -627,9 +623,8 @@ namespace StayInTarkov.Coop.Players
 
             }, callback, scheduled);
 
-            
-        }
 
+        }
 
         public override void DropCurrentController(Action callback, bool fastDrop, Item nextControllerItem = null)
         {
@@ -637,7 +632,7 @@ namespace StayInTarkov.Coop.Players
 
             // Handle inventory item syncronization AFTER a proceed operation has occurred. 
             // This will ensure sync of all items after use. No matter what the Clients did on their end.
-            if(PostProceedData.HasValue)
+            if (PostProceedData.HasValue)
             {
                 var newValue = PostProceedData.Value.NewValue.HasValue ? PostProceedData.Value.NewValue.Value : 0f;
                 if (!PostProceedData.Value.NewValue.HasValue && PostProceedData.Value.PreviousAmount.HasValue)
