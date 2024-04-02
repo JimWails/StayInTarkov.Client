@@ -71,8 +71,10 @@ namespace StayInTarkov.Coop.Player.Health
 
             if (player.HealthController != null && player.HealthController.IsAlive)
             {
+#if DEBUG
                 Logger.LogDebug("Replicated: Calling RestoreBodyPart");
                 Logger.LogDebug(restoreBodyPartPacket.ToJson());
+#endif
 
                 if (dict == null)
                 {
@@ -95,7 +97,9 @@ namespace StayInTarkov.Coop.Player.Health
                 {
                     bodyPartState.IsDestroyed = false;
                     var healthPenalty = restoreBodyPartPacket.HealthPenalty + (1f - restoreBodyPartPacket.HealthPenalty) * player.Skills.SurgeryReducePenalty;
+#if DEBUG
                     Logger.LogDebug("RestoreBodyPart::HealthPenalty::" + healthPenalty);
+#endif
                     bodyPartState.Health = new HealthValue(1f, Mathf.Max(1f, Mathf.Ceil(bodyPartState.Health.Maximum * healthPenalty)), 0f);
 
                     player.ExecuteSkill(new Action<float>(player.Skills.SurgeryAction.Complete));
