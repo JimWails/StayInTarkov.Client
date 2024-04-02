@@ -221,7 +221,7 @@ namespace StayInTarkov.Coop.FreeCamera
             }
 
             _gamePlayerOwner.enabled = false;
-            _freeCamScript.IsActive = true;
+            _freeCamScript.SetActive(true);
         }
 
         /// <summary>
@@ -230,7 +230,7 @@ namespace StayInTarkov.Coop.FreeCamera
         /// <param name="localPlayer"></param>
         private void SetPlayerToFirstPersonMode(EFT.Player localPlayer)
         {
-            _freeCamScript.IsActive = false;
+            _freeCamScript.SetActive(false);
 
             //if (FreecamPlugin.CameraRememberLastPosition.Value)
             //{
