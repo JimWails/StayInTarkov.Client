@@ -4,6 +4,7 @@ using EFT.Vehicle;
 using HarmonyLib;
 using StayInTarkov;
 using System.Reflection;
+using BotEventHandler = GClass603;
 
 namespace Aki.Custom.BTR.Patches
 {
@@ -20,7 +21,7 @@ namespace Aki.Custom.BTR.Patches
         [PatchPrefix]
         private static void PatchPrefix(DamageInfo damageInfo)
         {
-            var botEventHandler = Singleton<GClass598>.Instance;
+            var botEventHandler = Singleton<BotEventHandler>.Instance;
             if (botEventHandler == null)
             {
                 Logger.LogError($"[AKI-BTR] BTRReceiveDamageInfoPatch - BotEventHandler is null");

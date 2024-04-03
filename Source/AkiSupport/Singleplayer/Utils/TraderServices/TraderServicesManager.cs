@@ -10,8 +10,8 @@ using System.Reflection;
 using UnityEngine;
 using static BackendConfigSettingsClass;
 using TraderServiceClass = TraderServiceAvailabilityData;
-using QuestDictClass = GClass2133<string>;
-using StandingListClass = GClass2135<float>;
+using QuestDictClass = GClass2470<string>;
+using StandingListClass = GClass2472<float>;
 using StayInTarkov.Networking;
 using EFT.UI;
 

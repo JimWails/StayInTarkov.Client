@@ -6,6 +6,7 @@ using StayInTarkov.AkiSupport.Singleplayer.Patches.Progression;
 using StayInTarkov.AkiSupport.Singleplayer.Patches.Quests;
 using StayInTarkov.AkiSupport.Singleplayer.Patches.RaidFix;
 using StayInTarkov.AkiSupport.Singleplayer.Patches.ScavMode;
+using StayInTarkov.AkiSupport.Singleplayer.Patches.TraderServices;
 using System;
 
 namespace StayInTarkov.AkiSupport.Singleplayer
@@ -54,6 +55,10 @@ namespace StayInTarkov.AkiSupport.Singleplayer
                 new IsHostileToEverybodyPatch().Enable();
                 new ScavRepAdjustmentPatch().Enable();
 
+                // Trader Services Patches
+                new GetTraderServicesPatch().Enable();
+                new PurchaseTraderServicePatch().Enable();
+
                 // BTR Patches
                 new BTRPathLoadPatch().Enable();
                 new BTRActivateTraderDialogPatch().Enable();
@@ -69,7 +74,6 @@ namespace StayInTarkov.AkiSupport.Singleplayer
                 new BTREndRaidItemDeliveryPatch().Enable();
                 new BTRDestroyAtRaidEndPatch().Enable();
                 new BTRVehicleMovementSpeedPatch().Enable();
-                new ResetTraderServicesPatch().Enable();
                 
                 // Unused Patches
                 //new OfflineSaveProfilePatch().Enable();

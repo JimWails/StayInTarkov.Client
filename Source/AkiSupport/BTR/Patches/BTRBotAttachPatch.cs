@@ -2,6 +2,7 @@
 using EFT;
 using EFT.AssetsManager;
 using EFT.NextObservedPlayer;
+using EFT.UI;
 using EFT.Vehicle;
 using HarmonyLib;
 using StayInTarkov;
@@ -69,6 +70,7 @@ namespace Aki.Custom.BTR.Patches
             if (FindTurretObjects(turretPlayer, out weaponPrefab, out transform))
             {
                 weaponPrefab.transform.SetPositionAndRotation(__instance.GunRoot.position, __instance.GunRoot.rotation);
+                weaponPrefab.gameObject.SetActive(false);
                 transform.SetPositionAndRotation(__instance.GunRoot.position, __instance.GunRoot.rotation);
             }
 
@@ -116,6 +118,7 @@ namespace Aki.Custom.BTR.Patches
 
             if (weaponPrefab == null)
             {
+                ConsoleScreen.LogError("[AKI-BTR] weapon null.");
                 weapon = null;
                 return false;
             }
@@ -152,6 +155,13 @@ namespace Aki.Custom.BTR.Patches
                         collider.enabled = isVisible;
                     }
                 }
+            }
+
+            Renderer[] array = player.GetComponentsInChildren<Renderer>();
+            for (int i = 0; i < array.Length; i++)
+            {
+                ConsoleScreen.LogError("[AKI-BTR] btrbot hidding.");
+                array[i].enabled = isVisible;
             }
 
             // Build a list of renderers for this player object and set their rendering state
