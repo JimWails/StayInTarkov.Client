@@ -37,6 +37,7 @@ using System.Net.NetworkInformation;
 using EFT.Counters;
 using StayInTarkov.AkiSupport.Singleplayer.Utils.InRaid;
 using StayInTarkov.Coop.NetworkPacket.World;
+using EFT.AssetsManager;
 
 namespace StayInTarkov.Coop.Components.CoopGameComponents
 {
@@ -505,6 +506,8 @@ namespace StayInTarkov.Coop.Components.CoopGameComponents
                         ScreenManager instance = ScreenManager.Instance;
                         instance.CloseAllScreensForced();
                     }
+
+                    SetVisible(player, false);
                 }
 
 
@@ -521,6 +524,52 @@ namespace StayInTarkov.Coop.Components.CoopGameComponents
                 }
 
             }
+        }
+
+        private static void SetVisible(EFT.Player player, bool isVisible)
+        {
+            var weaponPrefab = (WeaponPrefab)ReflectionHelpers.GetFieldFromType(typeof(EFT.Player.FirearmController), "weaponPrefab_0").GetValue(player.gameObject.GetComponent<EFT.Player.FirearmController>());
+
+            // Toggle any animators and colliders
+            if (player.HealthController.IsAlive)
+            {
+                Renderer[] array = player.GetComponentsInChildren<Renderer>();
+                for (int i = 0; i < array.Length; i++)
+                {
+                    array[i].enabled = isVisible;
+                }
+
+                IAnimator bodyAnimatorCommon = player.GetBodyAnimatorCommon();
+                if (bodyAnimatorCommon.enabled != isVisible)
+                {
+                    bool flag = !bodyAnimatorCommon.enabled;
+                    bodyAnimatorCommon.enabled = isVisible;
+                    FirearmsAnimator firearmsAnimator = player.HandsController.FirearmsAnimator;
+                    if (firearmsAnimator != null && firearmsAnimator.Animator.enabled != isVisible)
+                    {
+                        firearmsAnimator.Animator.enabled = isVisible;
+                    }
+                }
+
+                PlayerPoolObject component = player.gameObject.GetComponent<PlayerPoolObject>();
+                foreach (Collider collider in component.Colliders)
+                {
+                    if (collider.enabled != isVisible)
+                    {
+                        collider.enabled = isVisible;
+                    }
+                }
+            }
+
+            // Build a list of renderers for this player object and set their rendering state
+            List<Renderer> rendererList = new List<Renderer>(256);
+            rendererList.Clear();
+            player.PlayerBody.GetRenderersNonAlloc(rendererList);
+            if (weaponPrefab != null)
+            {
+                rendererList.AddRange(weaponPrefab.Renderers);
+            }
+            rendererList.ForEach(renderer => renderer.forceRenderingOff = !isVisible);
         }
 
         private HashSet<string> ExtractedProfilesSent = new();
