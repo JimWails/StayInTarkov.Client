@@ -118,7 +118,6 @@ namespace Aki.Custom.BTR.Patches
 
             if (weaponPrefab == null)
             {
-                ConsoleScreen.LogError("[AKI-BTR] weapon null.");
                 weapon = null;
                 return false;
             }
@@ -160,7 +159,6 @@ namespace Aki.Custom.BTR.Patches
             Renderer[] array = player.GetComponentsInChildren<Renderer>();
             for (int i = 0; i < array.Length; i++)
             {
-                ConsoleScreen.LogError("[AKI-BTR] btrbot hidding.");
                 array[i].enabled = isVisible;
             }
 
