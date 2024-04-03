@@ -4,6 +4,9 @@ using EFT;
 using EFT.HealthSystem;
 using EFT.Interactive;
 using EFT.InventoryLogic;
+using Newtonsoft.Json.Linq;
+using RootMotion.FinalIK;
+using StayInTarkov.AkiSupport.Singleplayer.Utils.InRaid;
 using StayInTarkov.Coop.Components.CoopGameComponents;
 using StayInTarkov.Coop.Controllers;
 using StayInTarkov.Coop.Controllers.CoopInventory;
@@ -12,10 +15,13 @@ using StayInTarkov.Coop.Controllers.Health;
 using StayInTarkov.Coop.NetworkPacket.Player;
 using StayInTarkov.Coop.NetworkPacket.Player.Health;
 using StayInTarkov.Coop.NetworkPacket.Player.Proceed;
-using StayInTarkov.Core.Player;
+//using StayInTarkov.Core.Player;
 using StayInTarkov.Networking;
 using System;
 using System.Collections;
+using System.Collections.Generic;
+using System.Security.Cryptography;
+using System.Text;
 using System.Threading.Tasks;
 using UnityEngine;
 
@@ -43,7 +49,8 @@ namespace StayInTarkov.Coop.Players
             , AbstractQuestControllerClass questController = null
             , AbstractAchievementControllerClass achievementsController = null
             , bool isYourPlayer = false
-            , bool isClientDrone = false)
+            , bool isClientDrone = false
+            , string initialMongoId = null)
         {
             CoopPlayer player = null;
 
@@ -77,18 +84,18 @@ namespace StayInTarkov.Coop.Players
                     , getAimingSensitivity
                     , prefix
                     , aiControl);
-               
             }
             player.IsYourPlayer = isYourPlayer;
             player.Position = position;
 
-            InventoryControllerClass inventoryController = isYourPlayer || player is CoopPlayer
-                ? new CoopInventoryController(player, profile, false)
-                : new CoopInventoryControllerClient(player, profile, false);
+            InventoryControllerClass inventoryController = player is CoopPlayerClient
+                ? new CoopInventoryControllerClient(player, profile, false, initialMongoId)
+                : new CoopInventoryController(player, profile, false);
+            player.BepInLogger.LogDebug($"{inventoryController.GetType().Name} Instantiated");
 
-            foreach(var item in profile.Inventory.AllRealPlayerItems)
+            foreach (var item in profile.Inventory.AllRealPlayerItems)
             {
-                if(item.Owner == null)
+                if (item.Owner == null)
                 {
                     player.BepInLogger.LogInfo("Owner is null. wtf");
                 }
@@ -97,29 +104,15 @@ namespace StayInTarkov.Coop.Players
             // Quest Controller instantiate
             if (isYourPlayer)
             {
-                if (questController == null)
-                {
-                    questController = PlayerFactory.GetQuestController(profile, inventoryController);
-                    player.BepInLogger.LogDebug($"{nameof(questController)} Instantiated");
-                }
-                else
-                {
-                    player.BepInLogger.LogDebug($"{nameof(questController)} Instantiated");
-                }
+                questController = PlayerFactory.GetQuestController(profile, inventoryController);
+                player.BepInLogger.LogDebug($"{nameof(questController)} Instantiated");
             }
 
             // Achievement Controller instantiate
             if (isYourPlayer)
             {
-                if (achievementsController == null)
-                {
-                    achievementsController = PlayerFactory.GetAchievementController(profile, inventoryController);
-                    player.BepInLogger.LogDebug($"{nameof(achievementsController)} Instantiated");
-                }
-                else
-                {
-                    player.BepInLogger.LogDebug($"{nameof(achievementsController)} Instantiated");
-                }
+                achievementsController = PlayerFactory.GetAchievementController(profile, inventoryController);
+                player.BepInLogger.LogDebug($"{nameof(achievementsController)} Instantiated");
             }
 
             IStatisticsManager statsManager = isYourPlayer ? PlayerFactory.GetStatisticsManager(player) : new NullStatisticsManager();
@@ -129,7 +122,7 @@ namespace StayInTarkov.Coop.Players
             //IHealthController healthController = isClientDrone
             //? new PlayerHealthController(profile.Health, player, inventoryController, profile.Skills, true)//   new CoopHealthControllerClient(profile.Health, player, inventoryController, profile.Skills, isClientDrone ? false : aiControl)
             //: new CoopHealthController(profile.Health, player, inventoryController, profile.Skills, isClientDrone ? false : aiControl);
-            IHealthController healthController = 
+            IHealthController healthController =
                 // aiControl = true is VITAL, otherwise items will not be used!
                 // found the fault is caused by aiControl allows ManualUpdate to be used
                 //isClientDrone ? new PlayerHealthController(profile.Health, player, inventoryController, profile.Skills, true) 
@@ -159,18 +152,18 @@ namespace StayInTarkov.Coop.Players
             player.Position = position;
 
             // If this is a Client Drone add Player Replicated Component
-            if (isClientDrone)
-            {
-                var prc = player.GetOrAddComponent<PlayerReplicatedComponent>();
-                prc.IsClientDrone = true;
-            }
+            //if (isClientDrone)
+            //{
+            //    var prc = player.GetOrAddComponent<PlayerReplicatedComponent>();
+            //    prc.IsClientDrone = true;
+            //}
 
             return player;
         }
 
         public override ApplyShot ApplyShot(DamageInfo damageInfo, EBodyPart bodyPartType, EBodyPartColliderType colliderType, EArmorPlateCollider armorPlateCollider, ShotId shotId)
         {
-            if (!CoopGameComponent.TryGetCoopGameComponent(out var coopGameComponent))
+            if (!SITGameComponent.TryGetCoopGameComponent(out var coopGameComponent))
                 return null;
 
             if (!coopGameComponent.GameWorldGameStarted)
@@ -181,7 +174,7 @@ namespace StayInTarkov.Coop.Players
 
         public override void ApplyDamageInfo(DamageInfo damageInfo, EBodyPart bodyPartType, EBodyPartColliderType colliderType, float absorbed)
         {
-            if (!CoopGameComponent.TryGetCoopGameComponent(out var coopGameComponent))
+            if (!SITGameComponent.TryGetCoopGameComponent(out var coopGameComponent))
                 return;
 
             if (!coopGameComponent.GameWorldGameStarted)
@@ -206,6 +199,14 @@ namespace StayInTarkov.Coop.Players
             damagePacket.BodyPart = bodyPartType;
             damagePacket.ColliderType = bodyPartColliderType;
             damagePacket.Absorbed = absorbed;
+            damagePacket.Point = damageInfo.HitPoint;
+            damagePacket.Direction = damageInfo.Direction;
+            damagePacket.PenetrationPower = damageInfo.PenetrationPower;
+            if (damageInfo.SourceId != null)
+            {
+                damagePacket.SourceId = damageInfo.SourceId;
+            }
+
             if (damageInfo.Player != null)
             {
                 damagePacket.AggressorProfileId = damageInfo.Player.iPlayer.ProfileId;
@@ -412,7 +413,7 @@ namespace StayInTarkov.Coop.Players
 
         public virtual void ReceivePlayerStatePacket(PlayerStatePacket playerStatePacket)
         {
-           
+
         }
 
         protected virtual void Interpolate()
@@ -435,7 +436,20 @@ namespace StayInTarkov.Coop.Players
             // Paulov: Unknown / Unable to replicate issue where some User's feed would cause a crash
             //if(PluginConfigSettings.Instance.CoopSettings.SETTING_ShowFeed)
             //    DisplayMessageNotifications.DisplayMessageNotification(attacker != null ? $"\"{GeneratePlayerNameWithSide(attacker)}\" killed \"{GeneratePlayerNameWithSide(victim)}\"" : $"\"{GeneratePlayerNameWithSide(victim)}\" has died because of \"{("DamageType_" + damageType.ToString()).Localized()}\"");
-            
+
+            // Make it only working in Scav Raid
+            if (RaidChangesUtil.IsScavRaid)
+            {
+                if (victim.Profile.Side == EPlayerSide.Savage)
+                {
+                    if (attacker != null && attacker.Profile.Side != EPlayerSide.Savage)
+                    {
+                        LastAggressor.Loyalty.method_2(victim);
+                        LastAggressor.Loyalty.method_4(victim.Profile.Info.Settings);
+                    }
+                }
+            }
+
             using KillPacket killPacket = new KillPacket(ProfileId, damageType);
             GameClient.SendData(killPacket.Serialize());
         }
@@ -470,7 +484,7 @@ namespace StayInTarkov.Coop.Players
             {
                 return $"{UsedItem}:{PreviousAmount}:{NewValue}";
             }
-        } 
+        }
 
         protected SITPostProceedData? PostProceedData { get; set; }
         public bool TriggerPressed { get; internal set; }
@@ -516,7 +530,7 @@ namespace StayInTarkov.Coop.Players
             new Process<MedsController, IMedsController>(this, controllerFactory, meds).method_0(null, (x) => {
                 PostProceedData = new SITPostProceedData { PreviousAmount = startResource, UsedItem = meds, HandsController = x.Value };
                 callback(x);
-            },false);
+            }, false);
 
             // Extra unneccessary protection
             if (this is CoopPlayer)
@@ -542,7 +556,7 @@ namespace StayInTarkov.Coop.Players
             new Process<SITGrenadeController, IThrowableCallback>(this, controllerFactory, throwWeap).method_0(null, callback, scheduled);
 
             PlayerProceedGrenadePacket packet = new PlayerProceedGrenadePacket(ProfileId, throwWeap.Id, scheduled);
-            GameClient.SendData(packet.Serialize());    
+            GameClient.SendData(packet.Serialize());
         }
 
         public override void Proceed(Item item, Callback<IQuickUseController> callback, bool scheduled = true)
@@ -562,7 +576,6 @@ namespace StayInTarkov.Coop.Players
                 fastHide = firearmController.CheckForFastWeaponSwitch(weapon);
             }
             new Process<FirearmController, IFirearmHandsController>(this, controllerFactory, weapon, fastHide).method_0(null, callback, scheduled);
-            
             PlayerProceedWeaponPacket weaponPacket = new PlayerProceedWeaponPacket();
             weaponPacket.ProfileId = this.ProfileId;
             weaponPacket.ItemId = weapon.Id;
@@ -587,8 +600,6 @@ namespace StayInTarkov.Coop.Players
                     }
 
                 }, callback, scheduled);
-
-            
         }
 
         public override void Proceed(KnifeComponent knife, Callback<IQuickKnifeKickController> callback, bool scheduled = true)
@@ -610,9 +621,8 @@ namespace StayInTarkov.Coop.Players
 
             }, callback, scheduled);
 
-            
-        }
 
+        }
 
         public override void DropCurrentController(Action callback, bool fastDrop, Item nextControllerItem = null)
         {
@@ -620,7 +630,7 @@ namespace StayInTarkov.Coop.Players
 
             // Handle inventory item syncronization AFTER a proceed operation has occurred. 
             // This will ensure sync of all items after use. No matter what the Clients did on their end.
-            if(PostProceedData.HasValue)
+            if (PostProceedData.HasValue)
             {
                 var newValue = PostProceedData.Value.NewValue.HasValue ? PostProceedData.Value.NewValue.Value : 0f;
                 if (!PostProceedData.Value.NewValue.HasValue && PostProceedData.Value.PreviousAmount.HasValue)
@@ -645,8 +655,111 @@ namespace StayInTarkov.Coop.Players
             base.DropCurrentController(callback, fastDrop, nextControllerItem);
         }
 
+        public override void vmethod_0(WorldInteractiveObject interactiveObject, InteractionResult interactionResult, Action callback)
+        {
+            base.vmethod_0(interactiveObject, interactionResult, callback);
+
+            BepInLogger.LogInfo($"Creating {nameof(PlayerInteractWithObjectPacket)} packet");
+
+            JObject dict = new()
+            {
+                { "serverId", SITGameComponent.GetServerId() },
+                { "t", DateTime.Now.Ticks.ToString("G") },
+                { "m", "StartDoorInteraction" },
+                { "profileId", this.ProfileId },
+                { "WIOId", interactiveObject.Id },
+                { "interactionType", (int)interactionResult.InteractionType }
+            };
+
+            if (interactionResult is KeyInteractionResult keyInteractionResult)
+            {
+                KeyComponent key = keyInteractionResult.Key;
+
+                dict.Add("keyItemId", key.Item.Id);
+                dict.Add("keyTemplateId", key.Item.TemplateId);
+
+                if (key.Template.MaximumNumberOfUsage > 0 && key.NumberOfUsages + 1 >= key.Template.MaximumNumberOfUsage)
+                    callback();
+
+                ItemAddress itemAddress = keyInteractionResult.DiscardResult != null ? keyInteractionResult.From : key.Item.Parent;
+                if (itemAddress is GridItemAddress grid)
+                {
+                    GridItemAddressDescriptor gridItemAddressDescriptor = new();
+                    gridItemAddressDescriptor.Container = new();
+                    gridItemAddressDescriptor.Container.ContainerId = grid.Container.ID;
+                    gridItemAddressDescriptor.Container.ParentId = grid.Container.ParentItem?.Id;
+                    gridItemAddressDescriptor.LocationInGrid = grid.LocationInGrid;
+                    dict.Add("keyParentGrid", gridItemAddressDescriptor.ToJson());
+                }
+
+                dict.Add("succeed", keyInteractionResult.Succeed);
+            }
+
+            PlayerInteractWithObjectPacket playerInteractWithObjectPacket = new PlayerInteractWithObjectPacket(this.ProfileId);
+            playerInteractWithObjectPacket.ProcessJson = dict;
+
+            BepInLogger.LogInfo($"Sending {nameof(PlayerInteractWithObjectPacket)} packet");
+            GameClient.SendData(playerInteractWithObjectPacket.Serialize());
+        }
+
+        public override void vmethod_1(WorldInteractiveObject door, InteractionResult interactionResult)
+        {
+            base.vmethod_1(door, interactionResult);
+
+            BepInLogger.LogInfo($"Creating {nameof(PlayerInteractWithDoorPacket)} packet");
+
+            JObject dict = new()
+            {
+                { "serverId", SITGameComponent.GetServerId() },
+                { "t", DateTime.Now.Ticks.ToString("G") },
+                { "m", "StartDoorInteraction" },
+                { "profileId", this.ProfileId },
+                { "WIOId", door.Id },
+                { "interactionType", (int)interactionResult.InteractionType }
+            };
+
+            if (interactionResult is KeyInteractionResult keyInteractionResult)
+            {
+                KeyComponent key = keyInteractionResult.Key;
+
+                dict.Add("keyItemId", key.Item.Id);
+                dict.Add("keyTemplateId", key.Item.TemplateId);
+
+                if (key.Template.MaximumNumberOfUsage > 0 && key.NumberOfUsages + 1 >= key.Template.MaximumNumberOfUsage)
+                    return;
+
+                ItemAddress itemAddress = keyInteractionResult.DiscardResult != null ? keyInteractionResult.From : key.Item.Parent;
+                if (itemAddress is GridItemAddress grid)
+                {
+                    GridItemAddressDescriptor gridItemAddressDescriptor = new();
+                    gridItemAddressDescriptor.Container = new();
+                    gridItemAddressDescriptor.Container.ContainerId = grid.Container.ID;
+                    gridItemAddressDescriptor.Container.ParentId = grid.Container.ParentItem?.Id;
+                    gridItemAddressDescriptor.LocationInGrid = grid.LocationInGrid;
+                    dict.Add("keyParentGrid", gridItemAddressDescriptor.ToJson());
+                }
+
+                dict.Add("succeed", keyInteractionResult.Succeed);
+            }
+
+            PlayerInteractWithDoorPacket packet = new (this.ProfileId);
+            packet.DoorId = door.Id;
+            packet.ProcessJson = dict;
+
+            BepInLogger.LogInfo($"Sending {nameof(PlayerInteractWithDoorPacket)} packet");
+            GameClient.SendData(packet.Serialize());
+
+
+        }
+
         void Awake()
         {
+
+        }
+
+        void Start()
+        {
+            CreateDogtag();
         }
 
         public override void ComplexLateUpdate(EUpdateQueue queue, float deltaTime)
@@ -661,6 +774,54 @@ namespace StayInTarkov.Coop.Players
             }
         }
 
+        void CreateDogtag()
+        {
+            BepInLogger.LogDebug($"{nameof(CreateDogtag)}");
+            if (Side != EPlayerSide.Savage && ReflectionHelpers.GetDogtagItem(this) == null)
+            {
+                if (!SITGameComponent.TryGetCoopGameComponent(out SITGameComponent coopGameComponent))
+                    return;
+
+                Slot dogtagSlot = Inventory.Equipment.GetSlot(EquipmentSlot.Dogtag);
+                if (dogtagSlot == null)
+                    return;
+
+                string itemId = "";
+                using (SHA256 sha256 = SHA256.Create())
+                {
+                    StringBuilder sb = new();
+
+                    byte[] hashes = sha256.ComputeHash(Encoding.UTF8.GetBytes(coopGameComponent.ServerId + ProfileId + coopGameComponent.Timestamp));
+                    for (int i = 0; i < hashes.Length; i++)
+                        sb.Append(hashes[i].ToString("x2"));
+                    itemId = sb.ToString().Substring(0, 24);
+                }
+
+                Item dogtag = Spawners.ItemFactory.CreateItem(itemId, Side == EPlayerSide.Bear ? DogtagComponent.BearDogtagsTemplate : DogtagComponent.UsecDogtagsTemplate);
+                if (dogtag != null)
+                    dogtagSlot.AddWithoutRestrictions(dogtag);
+            }
+        }
+
+        public void ProcessModuleReplicationPatch(Dictionary<string, object> packet)
+        {
+            if (!packet.ContainsKey("m"))
+                return;
+
+            var method = packet["m"].ToString();
+
+            if (!ModuleReplicationPatch.Patches.ContainsKey(method))
+                return;
+
+            var patch = ModuleReplicationPatch.Patches[method];
+            if (patch != null)
+            {
+                patch.Replicated(this, packet);
+                return;
+            }
+
+
+        }
 
     }
 }

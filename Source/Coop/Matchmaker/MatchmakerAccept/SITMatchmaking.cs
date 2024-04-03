@@ -53,7 +53,6 @@ namespace StayInTarkov.Coop.Matchmaker
             }
         }
 
-        public static GameObject EnvironmentUIRoot { get; internal set; }
         public static MatchmakerTimeHasCome.TimeHasComeScreenController TimeHasComeScreenController { get; internal set; }
         public static ESITProtocol SITProtocol { get; internal set; }
         public static string IPAddress { get; internal set; }
@@ -68,7 +67,6 @@ namespace StayInTarkov.Coop.Matchmaker
 
         public static void Run()
         {
-            new EnvironmentUIRootPatch().Enable();
             new MatchmakerAcceptScreenAwakePatch().Enable();
             new MatchmakerAcceptScreenShowPatch().Enable();
         }
@@ -218,6 +216,8 @@ namespace StayInTarkov.Coop.Matchmaker
                             return false;
                         }
                     }
+                    
+                    MatchingType = EMatchmakerType.GroupPlayer;
 
                     return true;
                 }
@@ -230,7 +230,8 @@ namespace StayInTarkov.Coop.Matchmaker
             , string password
             , ESITProtocol protocol
             , string ipAddress
-            , int port)
+            , int port
+            , EMatchmakerType matchmakerType)
         {           
             long timestamp = DateTimeOffset.Now.ToUnixTimeSeconds();
             SITProtocol = protocol;
@@ -264,7 +265,7 @@ namespace StayInTarkov.Coop.Matchmaker
                 Logger.LogDebug($"CreateMatch:: Match Created for {profileId}");
                 SetGroupId(profileId);
                 SetTimestamp(timestamp);
-                MatchingType = EMatchmakerType.GroupLeader;
+                MatchingType = matchmakerType;
 
                 IPAddress = ipAddress;
                 Port = port;

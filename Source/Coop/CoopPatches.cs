@@ -5,7 +5,7 @@ using StayInTarkov.Coop.Matchmaker;
 using StayInTarkov.Coop.Player;
 using StayInTarkov.Coop.Sounds;
 using StayInTarkov.Coop.World;
-using StayInTarkov.Core.Player;
+//using StayInTarkov.Core.Player;
 using StayInTarkov.Networking;
 using System;
 using System.Collections.Generic;
@@ -55,7 +55,7 @@ namespace StayInTarkov.Coop
         {
             var enablePatches = true;
 
-            var coopGC = CoopGameComponent.GetCoopGameComponent();
+            var coopGC = SITGameComponent.GetCoopGameComponent();
             if (coopGC == null)
             {
                 Logger.LogDebug($"CoopPatches:CoopGameComponent is null, Patches wont be Applied");
@@ -68,7 +68,7 @@ namespace StayInTarkov.Coop
                 enablePatches = false;
             }
 
-            if (string.IsNullOrEmpty(CoopGameComponent.GetServerId()))
+            if (string.IsNullOrEmpty(SITGameComponent.GetServerId()))
             {
                 Logger.LogDebug($"CoopPatches:CoopGameComponent ServerId is not set, Patches wont be Applied");
                 enablePatches = false;
@@ -131,18 +131,18 @@ namespace StayInTarkov.Coop
         {
             EnableDisablePatches();
 
-            if (CoopGameComponent.TryGetCoopGameComponent(out var coopGameComponent))
+            if (SITGameComponent.TryGetCoopGameComponent(out var coopGameComponent))
             {
-                foreach (var p in coopGameComponent.Players)
-                {
-                    if (p.Value == null)
-                        continue;
+                //foreach (var p in coopGameComponent.Players)
+                //{
+                //    if (p.Value == null)
+                //        continue;
 
-                    if (p.Value.TryGetComponent<PlayerReplicatedComponent>(out var prc))
-                    {
-                        GameObject.Destroy(prc);
-                    }
-                }
+                //    if (p.Value.TryGetComponent<PlayerReplicatedComponent>(out var prc))
+                //    {
+                //        GameObject.Destroy(prc);
+                //    }
+                //}
 
                 //foreach (var pl in GameObject.FindObjectsOfType<CoopPlayer>())
                 //{
@@ -153,10 +153,10 @@ namespace StayInTarkov.Coop
                 GameObject.DestroyImmediate(coopGameComponent);
             }
 
-            foreach (var prc in GameObject.FindObjectsOfType<PlayerReplicatedComponent>())
-            {
-                GameObject.DestroyImmediate(prc);
-            }
+            //foreach (var prc in GameObject.FindObjectsOfType<PlayerReplicatedComponent>())
+            //{
+            //    GameObject.DestroyImmediate(prc);
+            //}
 
 
             if (CoopGameComponentParent != null)

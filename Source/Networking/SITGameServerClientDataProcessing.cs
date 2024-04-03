@@ -81,7 +81,7 @@ namespace StayInTarkov.Networking
                     Logger.LogInfo("GOT :" + sData);
                 }
 
-                var coopGameComponent = CoopGameComponent.GetCoopGameComponent();
+                var coopGameComponent = SITGameComponent.GetCoopGameComponent();
 
                 if (coopGameComponent == null)
                 {
@@ -155,21 +155,28 @@ namespace StayInTarkov.Networking
                     return;
 
 
-                if (packet.ContainsKey(PACKET_TAG_METHOD)
-                    && packet[PACKET_TAG_METHOD].ToString() == "Move")
-                    coopGameComponent.ActionPacketHandler.ActionPacketsMovement.TryAdd(packet);
-                else if (packet.ContainsKey(PACKET_TAG_METHOD)
-                    && packet[PACKET_TAG_METHOD].ToString() == "ApplyDamageInfo")
-                {
-                    coopGameComponent.ActionPacketHandler.ActionPacketsDamage.TryAdd(packet);
-                }
+                //if (packet.ContainsKey(PACKET_TAG_METHOD)
+                //    && packet[PACKET_TAG_METHOD].ToString() == "Move")
+                //    coopGameComponent.ActionPacketHandler.ActionPacketsMovement.TryAdd(packet);
+                //else if (packet.ContainsKey(PACKET_TAG_METHOD)
+                //    && packet[PACKET_TAG_METHOD].ToString() == "ApplyDamageInfo")
+                //{
+                //    coopGameComponent.ActionPacketHandler.ActionPacketsDamage.TryAdd(packet);
+                //}
+                //else
+                //{
+                if (sitPacket != null)
+                    coopGameComponent.ActionPacketHandler.ActionSITPackets.Add(sitPacket);
                 else
                 {
-                    if (sitPacket != null)
-                        coopGameComponent.ActionPacketHandler.ActionSITPackets.Add(sitPacket);
-                    else
-                        coopGameComponent.ActionPacketHandler.ActionPackets.TryAdd(packet);
+#if DEBUG
+                    Logger.LogDebug($">> DEV TODO <<");
+                    Logger.LogDebug($">> Convert the following packet to binary <<");
+                    Logger.LogDebug($"{packet.ToJson()}");
+#endif 
+                    coopGameComponent.ActionPacketHandler.ActionPackets.TryAdd(packet);
                 }
+                //}
 
             }
             catch (Exception ex)
@@ -182,7 +189,7 @@ namespace StayInTarkov.Networking
         {
             packet = null;
 
-            var coopGameComponent = CoopGameComponent.GetCoopGameComponent();
+            var coopGameComponent = SITGameComponent.GetCoopGameComponent();
             if (coopGameComponent == null)
             {
                 Logger.LogError($"{nameof(ProcessSITPacket)}. coopGameComponent is Null");
@@ -221,11 +228,15 @@ namespace StayInTarkov.Networking
 
             if (!dictObject.ContainsKey("profileId"))
             {
-                var bpp = new BasePlayerPacket("", dictObject[PACKET_TAG_METHOD].ToString());
-                bpp.Deserialize(data);
-                dictObject.Add("profileId", new string(bpp.ProfileId.ToCharArray()));
-                bpp.Dispose();
-                bpp = null;
+                try
+                {
+                    var bpp = new BasePlayerPacket("", dictObject[PACKET_TAG_METHOD].ToString());
+                    bpp.Deserialize(data);
+                    dictObject.Add("profileId", new string(bpp.ProfileId.ToCharArray()));
+                    bpp.Dispose();
+                    bpp = null;
+                }
+                catch { }
             }
 
             if (DEBUGPACKETS)
@@ -234,22 +245,35 @@ namespace StayInTarkov.Networking
                 Logger.LogInfo(dictObject.ToJson());
             }
 
-            var sitPacketType = 
-                StayInTarkovHelperConstants
-                .SITTypes
-                .Union(ReflectionHelpers.EftTypes)
-                .FirstOrDefault(x => x.Name == bp.Method);
-            if (sitPacketType != null) 
+            packet = DeserializeIntoPacket(data, packet, bp);
+        }
+
+        private static ISITPacket DeserializeIntoPacket(byte[] data, ISITPacket packet, BasePacket bp)
+        {
+            var sitPacketType =
+                            StayInTarkovHelperConstants
+                            .SITTypes
+                            .Union(ReflectionHelpers.EftTypes)
+                            .FirstOrDefault(x => x.Name == bp.Method);
+            if (sitPacketType != null)
             {
                 //Logger.LogInfo($"{sitPacketType} found");
                 packet = (ISITPacket)Activator.CreateInstance(sitPacketType);
                 packet = packet.Deserialize(data);
             }
+            else
+            {
+#if DEBUG
+                Logger.LogDebug($"{nameof(DeserializeIntoPacket)}:{bp.Method} could not find a matching ISITPacket type");
+#endif
+            }
+
+            return packet;
         }
 
         public static bool ProcessDataListPacket(ref Dictionary<string, object> packet)
         {
-            var coopGC = CoopGameComponent.GetCoopGameComponent();
+            var coopGC = SITGameComponent.GetCoopGameComponent();
             if (coopGC == null)
                 return false;
 

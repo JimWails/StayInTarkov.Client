@@ -1,6 +1,5 @@
 ﻿using Comfort.Common;
 using EFT;
-using EFT.HealthSystem;
 using StayInTarkov.AkiSupport.Singleplayer.Models.Healing;
 using StayInTarkov.Coop.Components.CoopGameComponents;
 using StayInTarkov.Health;
@@ -72,7 +71,8 @@ namespace StayInTarkov.UI
 
             SaveProfileProgress(result.Value0, profile, currentHealth, ____raidSettings.IsScav);
 
-            var coopGC = CoopGameComponent.GetCoopGameComponent();
+
+            var coopGC = SITGameComponent.GetCoopGameComponent();
             if (coopGC != null)
             {
                 UnityEngine.Object.Destroy(coopGC);

@@ -15,7 +15,7 @@ using StayInTarkov.Coop.Player;
 using StayInTarkov.Coop.Players;
 using StayInTarkov.Coop.SITGameModes;
 using StayInTarkov.Coop.Web;
-using StayInTarkov.Core.Player;
+//using StayInTarkov.Core.Player;
 using StayInTarkov.EssentialPatches;
 using StayInTarkov.Memory;
 using StayInTarkov.Networking;
@@ -31,14 +31,18 @@ using System.Threading.Tasks;
 using UnityEngine;
 
 using Rect = UnityEngine.Rect;
-using BSGMemoryGC = GClass772;
+using StayInTarkov.Coop.NetworkPacket.Raid;
+using Diz.Jobs;
+using System.Net.NetworkInformation;
+using EFT.Counters;
+using StayInTarkov.AkiSupport.Singleplayer.Utils.InRaid;
 
 namespace StayInTarkov.Coop.Components.CoopGameComponents
 {
     /// <summary>
     /// Coop Game Component is the User 1-2-1 communication to the Server. This can be seen as an extension component to CoopGame.
     /// </summary>
-    public class CoopGameComponent : MonoBehaviour
+    public class SITGameComponent : MonoBehaviour
     {
         #region Fields/Properties        
         public WorldInteractiveObject[] ListOfInteractiveObjects { get; set; }
@@ -103,11 +107,12 @@ namespace StayInTarkov.Coop.Components.CoopGameComponents
         /// </summary>
         public Dictionary<string, EFT.Player> SpawnedPlayers { get; private set; } = new();
 
-        BepInEx.Logging.ManualLogSource Logger { get; set; }
+        public BepInEx.Logging.ManualLogSource Logger { get; private set; }
         public ConcurrentDictionary<string, ESpawnState> PlayersToSpawn { get; private set; } = new();
-        public ConcurrentDictionary<string, Dictionary<string, object>> PlayersToSpawnPacket { get; private set; } = new();
+        public ConcurrentDictionary<string, PlayerInformationPacket> PlayersToSpawnPacket { get; private set; } = new();
         public Dictionary<string, Profile> PlayersToSpawnProfiles { get; private set; } = new();
         public ConcurrentDictionary<string, Vector3> PlayersToSpawnPositions { get; private set; } = new();
+        public ConcurrentDictionary<string, string> PlayerInventoryMongoIds { get; private set; } = new();
 
         public HashSet<string> ProfileIdsAI { get; } = new();
         public HashSet<string> ProfileIdsUser { get; } = new();
@@ -124,25 +129,29 @@ namespace StayInTarkov.Coop.Components.CoopGameComponents
 
         Camera GameCamera { get; set; }
 
-        public ActionPacketHandlerComponent ActionPacketHandler { get; } = CoopPatches.CoopGameComponentParent.GetOrAddComponent<ActionPacketHandlerComponent>();
+        public ActionPacketHandlerComponent ActionPacketHandler { get; set; }
 
         #endregion
 
         #region Public Voids
 
-        public static CoopGameComponent GetCoopGameComponent()
+        public static SITGameComponent GetCoopGameComponent()
         {
             if (CoopPatches.CoopGameComponentParent == null)
+            {
+                StayInTarkovHelperConstants.Logger.LogError($"Attempted to use {nameof(GetCoopGameComponent)} before {nameof(SITGameComponent)} has been created.");
                 return null;
+            }
 
-            var coopGameComponent = CoopPatches.CoopGameComponentParent.GetComponent<CoopGameComponent>();
+            var coopGameComponent = CoopPatches.CoopGameComponentParent.GetComponent<SITGameComponent>();
             if (coopGameComponent != null)
                 return coopGameComponent;
 
+            StayInTarkovHelperConstants.Logger.LogError($"Attempted to use {nameof(GetCoopGameComponent)} before {nameof(SITGameComponent)} has been created.");
             return null;
         }
 
-        public static bool TryGetCoopGameComponent(out CoopGameComponent coopGameComponent)
+        public static bool TryGetCoopGameComponent(out SITGameComponent coopGameComponent)
         {
             coopGameComponent = GetCoopGameComponent();
             return coopGameComponent != null;
@@ -152,7 +161,10 @@ namespace StayInTarkov.Coop.Components.CoopGameComponents
         {
             var coopGC = GetCoopGameComponent();
             if (coopGC == null)
+            {
+                StayInTarkovHelperConstants.Logger.LogError($"Attempted to use {nameof(GetServerId)} before {nameof(SITGameComponent)} has been created.");
                 return null;
+            }
 
             return coopGC.ServerId;
         }
@@ -167,10 +179,11 @@ namespace StayInTarkov.Coop.Components.CoopGameComponents
         {
             // ----------------------------------------------------
             // Create a BepInEx Logger for CoopGameComponent
-            Logger = BepInEx.Logging.Logger.CreateLogSource("CoopGameComponent");
-            Logger.LogDebug("CoopGameComponent:Awake");
+            Logger = BepInEx.Logging.Logger.CreateLogSource(nameof(SITGameComponent));
+            Logger.LogDebug($"{nameof(SITGameComponent)}:{nameof(Awake)}");
 
-            gameObject.AddComponent<CoopGameGUIComponent>();
+            ActionPacketHandler = CoopPatches.CoopGameComponentParent.GetOrAddComponent<ActionPacketHandlerComponent>();
+            gameObject.AddComponent<SITGameGUIComponent>();
 
             SITCheck();
         }
@@ -223,22 +236,8 @@ namespace StayInTarkov.Coop.Components.CoopGameComponents
                 }
             });
 
-            // Run an immediate call to get characters in the server
-            _ = ReadFromServerCharacters();
-
-            // Get a Result of Characters within an interval loop
-            _ = Task.Run(() => ReadFromServerCharactersLoop());
-
-            // Process the Characters retrieved from the previous loop
-            StartCoroutine(ProcessServerCharacters());
-
             // Run any methods you wish every second
             StartCoroutine(EverySecondCoroutine());
-
-            StartCoroutine(SendPlayerStatePacket());
-
-            // Get a List of Interactive Objects (this is a slow method), so run once here to maintain a reference
-            ListOfInteractiveObjects = FindObjectsOfType<WorldInteractiveObject>();
 
             // Enable the Coop Patches
             CoopPatches.EnableDisablePatches();
@@ -254,6 +253,28 @@ namespace StayInTarkov.Coop.Components.CoopGameComponents
                 instance.ServerTime = ServerPing;
                 instance.NetworkQuality.CreateMeasurers();
             }
+
+
+            //System.Net.NetworkInformation.Ping pingSender = new ();
+            //PingOptions options = new PingOptions();
+
+            //// Use the default Ttl value which is 128,
+            //// but change the fragmentation behavior.
+            //options.DontFragment = true;
+
+            //// Create a buffer of 32 bytes of data to be transmitted.
+            //string data = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+            //byte[] buffer = Encoding.ASCII.GetBytes(data);
+            //int timeout = 120;
+            //PingReply reply = pingSender.Send(args[0], timeout, buffer, options);
+            //if (reply.Status == IPStatus.Success)
+            //{
+            //    Console.WriteLine("Address: {0}", reply.Address.ToString());
+            //    Console.WriteLine("RoundTrip time: {0}", reply.RoundtripTime);
+            //    Console.WriteLine("Time to live: {0}", reply.Options.Ttl);
+            //    Console.WriteLine("Don't fragment: {0}", reply.Options.DontFragment);
+            //    Console.WriteLine("Buffer size: {0}", reply.Buffer.Length);
+            //}
         }
 
         private IEnumerator SendPlayerStatePacket()
@@ -261,19 +282,23 @@ namespace StayInTarkov.Coop.Components.CoopGameComponents
             using PlayerStatesPacket playerStatesPacket = new PlayerStatesPacket();
            
             List<PlayerStatePacket> packets = new List<PlayerStatePacket>();
-            foreach (var player in Players.Values)
+            //foreach (var player in Players.Values)
+            foreach (var player in Singleton<GameWorld>.Instance.AllAlivePlayersList)
             {
+                //if (!GameWorldGameStarted)
+                //    continue;
+
                 if (player == null)
                     continue;
 
                 if (player is CoopPlayerClient)
                     continue;
 
-                if (!player.TryGetComponent(out PlayerReplicatedComponent prc))
-                    continue;
+                //if (!player.TryGetComponent(out PlayerReplicatedComponent prc))
+                //    continue;
 
-                if (prc.IsClientDrone)
-                    continue;
+                //if (prc.IsClientDrone)
+                //    continue;
 
                 if (!player.enabled)
                     continue;
@@ -287,7 +312,7 @@ namespace StayInTarkov.Coop.Components.CoopGameComponents
             //playerStates.Add("dataList", playerStateArray);
             //Logger.LogDebug(playerStates.SITToJson());
             playerStatesPacket.PlayerStates = packets.ToArray();
-            var serialized = playerStatesPacket.Serialize();
+            var serializedPlayerStates = playerStatesPacket.Serialize();
 
             //Logger.LogDebug($"{nameof(playerStatesPacket)} is {serialized.Length} in Length");
 
@@ -310,7 +335,7 @@ namespace StayInTarkov.Coop.Components.CoopGameComponents
             //            }
             // ----------------------------------------------------------------------------------------------------
 
-            GameClient.SendData(serialized);
+            GameClient.SendData(serializedPlayerStates);
 
             LastPlayerStateSent = DateTime.Now;
 
@@ -322,11 +347,11 @@ namespace StayInTarkov.Coop.Components.CoopGameComponents
         {
             GameWorldGameStarted = true;
             Logger.LogDebug(nameof(GameWorld_AfterGameStarted));
-            if (Singleton<GameWorld>.Instance.RegisteredPlayers.Any())
-            {
-                // Send My Player to Aki, so that other clients know about me
-                CoopSITGame.SendPlayerDataToServer((LocalPlayer)Singleton<GameWorld>.Instance.RegisteredPlayers.First(x => x.IsYourPlayer));
-            }
+            //if (Singleton<GameWorld>.Instance.RegisteredPlayers.Any())
+            //{
+            //    // Send My Player to Aki, so that other clients know about me
+            //    CoopSITGame.SendPlayerDataToServer((LocalPlayer)Singleton<GameWorld>.Instance.RegisteredPlayers.First(x => x.IsYourPlayer));
+            //}
 
             // Start the SIT Garbage Collector
             BSGMemoryGC.RunHeapPreAllocation();
@@ -334,6 +359,12 @@ namespace StayInTarkov.Coop.Components.CoopGameComponents
             BSGMemoryGC.EmptyWorkingSet();
             BSGMemoryGC.GCEnabled = true;
             Resources.UnloadUnusedAssets();
+
+            StartCoroutine(SendPlayerStatePacket());
+
+
+            // Get a List of Interactive Objects (this is a slow method), so run once here to maintain a reference
+            ListOfInteractiveObjects = FindObjectsOfType<WorldInteractiveObject>();
 
         }
 
@@ -382,6 +413,28 @@ namespace StayInTarkov.Coop.Components.CoopGameComponents
                     }
                 }
 
+                // Trigger all countdown exfils (e.g. car), clients are responsible for their own extract
+                // since exfilpoint.Entered is local because of collision logic being local
+                // we start from the end because we remove as we go in `CoopSITGame.ExfiltrationPoint_OnStatusChanged`
+                for (int i = coopGame.EnabledCountdownExfils.Count - 1; i >= 0; i--)
+                {
+                    var ep = coopGame.EnabledCountdownExfils[i];
+                    if (coopGame.PastTime - ep.ExfiltrationStartTime >= ep.Settings.ExfiltrationTime)
+                    {
+                        var game = Singleton<ISITGame>.Instance;
+                        foreach (var player in ep.Entered)
+                        {
+                            var hasUnmetRequirements = ep.UnmetRequirements(player).Any();
+                            if (player != null && player.HealthController.IsAlive && !hasUnmetRequirements)
+                            {
+                                game.ExtractingPlayers.Remove(player.ProfileId);
+                                game.ExtractedPlayers.Add(player.ProfileId);
+                            }
+                        }
+                        ep.SetStatusLogged(ep.Reusable ? EExfiltrationStatus.UncompleteRequirements : EExfiltrationStatus.NotPresent, nameof(EverySecondCoroutine));
+                    }
+                }
+
                 foreach (var player in playersToExtract)
                 {
                     coopGame.ExtractingPlayers.Remove(player);
@@ -400,6 +453,14 @@ namespace StayInTarkov.Coop.Components.CoopGameComponents
                     if (!ExtractedProfilesSent.Contains(profileId))
                     {
                         ExtractedProfilesSent.Add(profileId);
+                        if (player.Profile.Side == EPlayerSide.Savage)
+                        {
+                            player.Profile.EftStats.SessionCounters.AddDouble(0.01,
+                            [
+                                CounterTag.FenceStanding,
+                                EFenceStandingSource.ExitStanding
+                            ]);
+                        }
                         AkiBackendCommunicationCoop.PostLocalPlayerData(player
                             , new Dictionary<string, object>() { { "m", "Extraction" }, { "Extracted", true } }
                             );
@@ -420,6 +481,12 @@ namespace StayInTarkov.Coop.Components.CoopGameComponents
                             //if (Singleton<GameWorld>.Instance.MainPlayer.ProfileId != profileId)
                             //    Destroy(player);
                         }
+                    }
+                    //force close all screens to disallow looting open crates after extract
+                    if (profileId == world.MainPlayer.ProfileId)
+                    {
+                        ScreenManager instance = ScreenManager.Instance;
+                        instance.CloseAllScreensForced();
                     }
                 }
 
@@ -445,25 +512,25 @@ namespace StayInTarkov.Coop.Components.CoopGameComponents
         {
             StayInTarkovHelperConstants.Logger.LogDebug($"CoopGameComponent:OnDestroy");
 
-            if (Players != null)
-            {
-                foreach (var pl in Players)
-                {
-                    if (pl.Value == null)
-                        continue;
+            //if (Players != null)
+            //{
+            //    foreach (var pl in Players)
+            //    {
+            //        if (pl.Value == null)
+            //            continue;
 
-                    if (pl.Value.TryGetComponent<PlayerReplicatedComponent>(out var prc))
-                    {
-                        DestroyImmediate(prc);
-                    }
-                }
-            }
+            //        if (pl.Value.TryGetComponent<PlayerReplicatedComponent>(out var prc))
+            //        {
+            //            DestroyImmediate(prc);
+            //        }
+            //    }
+            //}
             Players.Clear();
             PlayersToSpawnProfiles.Clear();
             PlayersToSpawnPositions.Clear();
             PlayersToSpawnPacket.Clear();
             RunAsyncTasks = false;
-            StopCoroutine(ProcessServerCharacters());
+            //StopCoroutine(ProcessServerCharacters());
             StopCoroutine(EverySecondCoroutine());
 
             CoopPatches.EnableDisablePatches();
@@ -587,20 +654,134 @@ namespace StayInTarkov.Coop.Components.CoopGameComponents
                     }
                     else
                     {
+                        if (Singleton<ISITGame>.Instance.MyExitLocation == null)
+                        {
+                            var gameWorld = Singleton<GameWorld>.Instance;
+                            List<ScavExfiltrationPoint> scavExfilFiltered = new List<ScavExfiltrationPoint>();
+                            List<ExfiltrationPoint> pmcExfilPiltered = new List<ExfiltrationPoint>();
+                            foreach (var exfil in gameWorld.ExfiltrationController.ExfiltrationPoints)
+                            {
+                                if (exfil is ScavExfiltrationPoint scavExfil)
+                                {
+                                    scavExfilFiltered.Add(scavExfil);
+                                }
+                                else
+                                {
+                                    pmcExfilPiltered.Add(exfil);
+                                }
+                            }
+
+                            var playerPos = Singleton<GameWorld>.Instance.MainPlayer.Transform.position;
+                            var minDist = Mathf.Infinity;
+                            var closestExitLocation = "";
+                            if (RaidChangesUtil.IsScavRaid)
+                            {
+                                foreach (var filter in scavExfilFiltered)
+                                {
+                                    var dist = Vector3.Distance(filter.gameObject.transform.position, playerPos);
+                                    if (dist < minDist)
+                                    {
+                                        closestExitLocation = filter.Settings.Name;
+                                        minDist = dist;
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                foreach (var filter in pmcExfilPiltered)
+                                {
+                                    var dist = Vector3.Distance(filter.gameObject.transform.position, playerPos);
+                                    if (dist < minDist)
+                                    {
+                                        closestExitLocation = filter.Settings.Name;
+                                        minDist = dist;
+                                    }
+                                }
+                            }
+#if DEBUG
+                            Logger.LogDebug($"{nameof(ProcessQuitting)}: Original MyExitLocation is null::POS::1");
+                            Logger.LogDebug($"{nameof(ProcessQuitting)}: Using {closestExitLocation} as MyExitLocation");
+#endif
+                            Singleton<ISITGame>.Instance.Stop(
+                                Singleton<GameWorld>.Instance.MainPlayer.ProfileId
+                                , Singleton<ISITGame>.Instance.MyExitStatus
+                                , closestExitLocation
+                                , 0);
+                        }
+                        else
+                        {
+                            Singleton<ISITGame>.Instance.Stop(
+                                Singleton<GameWorld>.Instance.MainPlayer.ProfileId
+                                , Singleton<ISITGame>.Instance.MyExitStatus
+                                , Singleton<ISITGame>.Instance.MyExitLocation
+                                , 0);
+                        }
+                    }
+                }
+                else
+                {
+                    if (Singleton<ISITGame>.Instance.MyExitLocation == null)
+                    {
+                        var gameWorld = Singleton<GameWorld>.Instance;
+                        List<ScavExfiltrationPoint> scavExfilFiltered = new List<ScavExfiltrationPoint>();
+                        List<ExfiltrationPoint> pmcExfilPiltered = new List<ExfiltrationPoint>();
+                        foreach (var exfil in gameWorld.ExfiltrationController.ExfiltrationPoints)
+                        {
+                            if (exfil is ScavExfiltrationPoint scavExfil)
+                            {
+                                scavExfilFiltered.Add(scavExfil);
+                            }
+                            else
+                            {
+                                pmcExfilPiltered.Add(exfil);
+                            }
+                        }
+
+                        var playerPos = Singleton<GameWorld>.Instance.MainPlayer.Transform.position;
+                        var minDist = Mathf.Infinity;
+                        var closestExitLocation = "";
+                        if (RaidChangesUtil.IsScavRaid)
+                        {
+                            foreach (var filter in scavExfilFiltered)
+                            {
+                                var dist = Vector3.Distance(filter.gameObject.transform.position, playerPos);
+                                if (dist < minDist)
+                                {
+                                    closestExitLocation = filter.Settings.Name;
+                                    minDist = dist;
+                                }
+                            }
+                        }
+                        else
+                        {
+                            foreach (var filter in pmcExfilPiltered)
+                            {
+                                var dist = Vector3.Distance(filter.gameObject.transform.position, playerPos);
+                                if (dist < minDist)
+                                {
+                                    closestExitLocation = filter.Settings.Name;
+                                    minDist = dist;
+                                }
+                            }
+                        }
+#if DEBUG
+                        Logger.LogDebug($"{nameof(ProcessQuitting)}: Original MyExitLocation is null::POS::2");
+                        Logger.LogDebug($"{nameof(ProcessQuitting)}: Using {closestExitLocation} as MyExitLocation");
+#endif
+                        Singleton<ISITGame>.Instance.Stop(
+                            Singleton<GameWorld>.Instance.MainPlayer.ProfileId
+                            , Singleton<ISITGame>.Instance.MyExitStatus
+                            , closestExitLocation
+                            , 0);
+                    }
+                    else
+                    {
                         Singleton<ISITGame>.Instance.Stop(
                             Singleton<GameWorld>.Instance.MainPlayer.ProfileId
                             , Singleton<ISITGame>.Instance.MyExitStatus
                             , Singleton<ISITGame>.Instance.MyExitLocation
                             , 0);
                     }
-                }
-                else
-                {
-                    Singleton<ISITGame>.Instance.Stop(
-                            Singleton<GameWorld>.Instance.MainPlayer.ProfileId
-                            , Singleton<ISITGame>.Instance.MyExitStatus
-                            , Singleton<ISITGame>.Instance.MyExitLocation
-                            , 0);
                 }
                 return;
             }
@@ -629,11 +810,68 @@ namespace StayInTarkov.Coop.Components.CoopGameComponents
                         if (quitState == EQuitState.YouAreDeadAsHost || quitState == EQuitState.YouHaveExtractedOnlyAsHost || quitState == EQuitState.YourTeamHasExtracted || quitState == EQuitState.YourTeamIsDead)
                         {
                             ForceQuitGamePressed = 0;
-                            Singleton<ISITGame>.Instance.Stop(
-                                Singleton<GameWorld>.Instance.MainPlayer.ProfileId
-                                , Singleton<ISITGame>.Instance.MyExitStatus
-                                , Singleton<ISITGame>.Instance.MyExitLocation
-                                , 0);
+                            if (Singleton<ISITGame>.Instance.MyExitLocation == null)
+                            {
+                                var gameWorld = Singleton<GameWorld>.Instance;
+                                List<ScavExfiltrationPoint> scavExfilFiltered = new List<ScavExfiltrationPoint>();
+                                List<ExfiltrationPoint> pmcExfilPiltered = new List<ExfiltrationPoint>();
+                                foreach (var exfil in gameWorld.ExfiltrationController.ExfiltrationPoints)
+                                {
+                                    if (exfil is ScavExfiltrationPoint scavExfil)
+                                    {
+                                        scavExfilFiltered.Add(scavExfil);
+                                    }
+                                    else
+                                    {
+                                        pmcExfilPiltered.Add(exfil);
+                                    }
+                                }
+
+                                var playerPos = Singleton<GameWorld>.Instance.MainPlayer.Transform.position;
+                                var minDist = Mathf.Infinity;
+                                var closestExitLocation = "";
+                                if (RaidChangesUtil.IsScavRaid)
+                                {
+                                    foreach (var filter in scavExfilFiltered)
+                                    {
+                                        var dist = Vector3.Distance(filter.gameObject.transform.position, playerPos);
+                                        if (dist < minDist)
+                                        {
+                                            closestExitLocation = filter.Settings.Name;
+                                            minDist = dist;
+                                        }
+                                    }
+                                }
+                                else
+                                {
+                                    foreach (var filter in pmcExfilPiltered)
+                                    {
+                                        var dist = Vector3.Distance(filter.gameObject.transform.position, playerPos);
+                                        if (dist < minDist)
+                                        {
+                                            closestExitLocation = filter.Settings.Name;
+                                            minDist = dist;
+                                        }
+                                    }
+                                }
+#if DEBUG
+                                Logger.LogDebug($"{nameof(ProcessQuitting)}: Original MyExitLocation is null::POS::3");
+                                Logger.LogDebug($"{nameof(ProcessQuitting)}: Using {closestExitLocation} as MyExitLocation");
+#endif
+                                Singleton<ISITGame>.Instance.Stop(
+                                    Singleton<GameWorld>.Instance.MainPlayer.ProfileId
+                                    , Singleton<ISITGame>.Instance.MyExitStatus
+                                    , closestExitLocation
+                                    , 0);
+                            }
+                            else
+                            {
+                                Singleton<ISITGame>.Instance.Stop(
+                                    Singleton<GameWorld>.Instance.MainPlayer.ProfileId
+                                    , Singleton<ISITGame>.Instance.MyExitStatus
+                                    , Singleton<ISITGame>.Instance.MyExitLocation
+                                    , 0);
+                            }
                         }
                     }
                 }
@@ -651,11 +889,68 @@ namespace StayInTarkov.Coop.Components.CoopGameComponents
                 ServerHasStoppedActioned = true;
                 try
                 {
-                    Singleton<ISITGame>.Instance.Stop(
+                    if (Singleton<ISITGame>.Instance.MyExitLocation == null)
+                    {
+                        var gameWorld = Singleton<GameWorld>.Instance;
+                        List<ScavExfiltrationPoint> scavExfilFiltered = new List<ScavExfiltrationPoint>();
+                        List<ExfiltrationPoint> pmcExfilPiltered = new List<ExfiltrationPoint>();
+                        foreach (var exfil in gameWorld.ExfiltrationController.ExfiltrationPoints)
+                        {
+                            if (exfil is ScavExfiltrationPoint scavExfil)
+                            {
+                                scavExfilFiltered.Add(scavExfil);
+                            }
+                            else
+                            {
+                                pmcExfilPiltered.Add(exfil);
+                            }
+                        }
+
+                        var playerPos = Singleton<GameWorld>.Instance.MainPlayer.Transform.position;
+                        var minDist = Mathf.Infinity;
+                        var closestExitLocation = "";
+                        if (RaidChangesUtil.IsScavRaid)
+                        {
+                            foreach (var filter in scavExfilFiltered)
+                            {
+                                var dist = Vector3.Distance(filter.gameObject.transform.position, playerPos);
+                                if (dist < minDist)
+                                {
+                                    closestExitLocation = filter.Settings.Name;
+                                    minDist = dist;
+                                }
+                            }
+                        }
+                        else
+                        {
+                            foreach (var filter in pmcExfilPiltered)
+                            {
+                                var dist = Vector3.Distance(filter.gameObject.transform.position, playerPos);
+                                if (dist < minDist)
+                                {
+                                    closestExitLocation = filter.Settings.Name;
+                                    minDist = dist;
+                                }
+                            }
+                        }
+#if DEBUG
+                        Logger.LogDebug($"{nameof(ProcessQuitting)}: Original MyExitLocation is null::POS::4");
+                        Logger.LogDebug($"{nameof(ProcessQuitting)}: Using {closestExitLocation} as MyExitLocation");
+#endif
+                        Singleton<ISITGame>.Instance.Stop(
+                            Singleton<GameWorld>.Instance.MainPlayer.ProfileId
+                            , Singleton<ISITGame>.Instance.MyExitStatus
+                            , closestExitLocation
+                            , 0);
+                    }
+                    else
+                    {
+                        Singleton<ISITGame>.Instance.Stop(
                             Singleton<GameWorld>.Instance.MainPlayer.ProfileId
                             , Singleton<ISITGame>.Instance.MyExitStatus
                             , Singleton<ISITGame>.Instance.MyExitLocation
                             , 0);
+                    }
                 }
                 catch { }
                 return;
@@ -671,6 +966,7 @@ namespace StayInTarkov.Coop.Components.CoopGameComponents
 
             ProcessQuitting();
             ProcessServerHasStopped();
+            ProcessServerCharacters();
 
             if (ActionPackets == null)
                 return;
@@ -726,155 +1022,155 @@ namespace StayInTarkov.Coop.Components.CoopGameComponents
 
         #endregion
 
-        private async Task ReadFromServerCharactersLoop()
+        //private async Task ReadFromServerCharactersLoop()
+        //{
+        //    if (GetServerId() == null)
+        //        return;
+
+
+        //    while (RunAsyncTasks)
+        //    {
+        //        await Task.Delay(10000);
+
+        //        if (Players == null)
+        //            continue;
+
+        //        await ReadFromServerCharacters();
+
+        //    }
+        //}
+
+        //private async Task ReadFromServerCharacters()
+        //{
+        //    // -----------------------------------------------------------------------------------------------------------
+        //    // We must filter out characters that already exist on this match!
+        //    //
+        //    var playerList = new List<string>();
+        //    if (!PluginConfigSettings.Instance.CoopSettings.SETTING_DEBUGSpawnDronesOnServer)
+        //    {
+        //        if (PlayersToSpawn.Count > 0)
+        //            playerList.AddRange(PlayersToSpawn.Keys.ToArray());
+        //        if (Players.Keys.Any())
+        //            playerList.AddRange(Players.Keys.ToArray());
+        //        if (Singleton<GameWorld>.Instance.RegisteredPlayers.Any())
+        //            playerList.AddRange(Singleton<GameWorld>.Instance.RegisteredPlayers.Select(x => x.ProfileId));
+        //        if (Singleton<GameWorld>.Instance.AllAlivePlayersList.Count > 0)
+        //            playerList.AddRange(Singleton<GameWorld>.Instance.AllAlivePlayersList.Select(x => x.ProfileId));
+        //    }
+        //    //
+        //    // -----------------------------------------------------------------------------------------------------------
+        //    await Task.Run(() =>
+        //    {
+        //        // Ensure this is a distinct list of Ids
+        //        var distinctExistingProfileIds = playerList.Distinct().ToArray();
+        //        RequestSpawnPlayersPacket requestSpawnPlayersPacket = new RequestSpawnPlayersPacket(distinctExistingProfileIds);
+        //        GameClient.SendData(requestSpawnPlayersPacket.Serialize());
+        //    });
+        //    //try
+        //    //{
+        //    //    m_CharactersJson = await RequestingObj.PostJsonAsync<Dictionary<string, object>[]>("/coop/server/read/players", jsonDataToSend, 30000);
+        //    //    if (m_CharactersJson == null)
+        //    //        return;
+
+        //    //    if (!m_CharactersJson.Any())
+        //    //        return;
+
+        //    //    if (m_CharactersJson[0].ContainsKey("notFound"))
+        //    //    {
+        //    //        // Game is broken and doesn't exist!
+        //    //        if (LocalGameInstance != null)
+        //    //        {
+        //    //            ServerHasStopped = true;
+        //    //        }
+        //    //        return;
+        //    //    }
+
+        //    //    //Logger.LogDebug($"CoopGameComponent.ReadFromServerCharacters:{actionsToValues.Length}");
+
+        //    //    var packets = m_CharactersJson
+        //    //         .Where(x => x != null);
+        //    //    if (packets == null)
+        //    //        return;
+
+        //    //    foreach (var queuedPacket in packets)
+        //    //    {
+        //    //        if (queuedPacket != null && queuedPacket.Count > 0)
+        //    //        {
+        //    //            if (queuedPacket != null)
+        //    //            {
+        //    //                if (queuedPacket.ContainsKey("m"))
+        //    //                {
+        //    //                    var method = queuedPacket["m"].ToString();
+        //    //                    if (method != "PlayerSpawn")
+        //    //                        continue;
+
+        //    //                    string profileId = queuedPacket["profileId"].ToString();
+        //    //                    if (!PluginConfigSettings.Instance.CoopSettings.SETTING_DEBUGSpawnDronesOnServer)
+        //    //                    {
+        //    //                        if (Players == null
+        //    //                            || Players.ContainsKey(profileId)
+        //    //                            || Singleton<GameWorld>.Instance.RegisteredPlayers.Any(x => x.ProfileId == profileId)
+        //    //                            )
+        //    //                        {
+        //    //                            Logger.LogDebug($"Ignoring call to Spawn player {profileId}. The player already exists in the game.");
+        //    //                            continue;
+        //    //                        }
+        //    //                    }
+
+        //    //                    if (PlayersToSpawn.ContainsKey(profileId))
+        //    //                        continue;
+
+        //    //                    if (!PlayersToSpawnPacket.ContainsKey(profileId))
+        //    //                        PlayersToSpawnPacket.TryAdd(profileId, queuedPacket);
+
+        //    //                    if (!PlayersToSpawn.ContainsKey(profileId))
+        //    //                        PlayersToSpawn.TryAdd(profileId, ESpawnState.None);
+
+        //    //                    if (queuedPacket.ContainsKey("isAI"))
+        //    //                        Logger.LogDebug($"{nameof(ReadFromServerCharacters)}:isAI:{queuedPacket["isAI"]}");
+
+        //    //                    if (queuedPacket.ContainsKey("isAI") && queuedPacket["isAI"].ToString() == "True" && !ProfileIdsAI.Contains(profileId))
+        //    //                    {
+        //    //                        ProfileIdsAI.Add(profileId);
+        //    //                        Logger.LogDebug($"Added AI Character {profileId} to {nameof(ProfileIdsAI)}");
+        //    //                    }
+
+        //    //                    if (queuedPacket.ContainsKey("isAI") && queuedPacket["isAI"].ToString() == "False" && !ProfileIdsUser.Contains(profileId))
+        //    //                    {
+        //    //                        ProfileIdsUser.Add(profileId);
+        //    //                        Logger.LogDebug($"Added User Character {profileId} to {nameof(ProfileIdsUser)}");
+        //    //                    }
+
+        //    //                }
+        //    //            }
+        //    //        }
+        //    //    }
+        //    //}
+        //    //catch (Exception ex)
+        //    //{
+
+        //    //    Logger.LogError(ex.ToString());
+
+        //    //}
+        //    //finally
+        //    //{
+
+        //    //}
+        //}
+
+        //private IEnumerator ProcessServerCharacters()
+        private void ProcessServerCharacters()
         {
-            if (GetServerId() == null)
-                return;
+            //var waitEndOfFrame = new WaitForEndOfFrame();
 
+            //if (GetServerId() == null)
+            //    yield return waitEndOfFrame;
 
-            while (RunAsyncTasks)
-            {
-                await Task.Delay(10000);
+            //var waitSeconds = new WaitForSeconds(0.5f);
 
-                if (Players == null)
-                    continue;
-
-                await ReadFromServerCharacters();
-
-            }
-        }
-
-        private async Task ReadFromServerCharacters()
-        {
-            Dictionary<string, object> d = new();
-            d.Add("serverId", GetServerId());
-            d.Add("pL", new List<string>());
-
-            // -----------------------------------------------------------------------------------------------------------
-            // We must filter out characters that already exist on this match!
-            //
-            var playerList = new List<string>();
-            if (!PluginConfigSettings.Instance.CoopSettings.SETTING_DEBUGSpawnDronesOnServer)
-            {
-                if (PlayersToSpawn.Count > 0)
-                    playerList.AddRange(PlayersToSpawn.Keys.ToArray());
-                if (Players.Keys.Any())
-                    playerList.AddRange(Players.Keys.ToArray());
-                if (Singleton<GameWorld>.Instance.RegisteredPlayers.Any())
-                    playerList.AddRange(Singleton<GameWorld>.Instance.RegisteredPlayers.Select(x => x.ProfileId));
-                if (Singleton<GameWorld>.Instance.AllAlivePlayersList.Count > 0)
-                    playerList.AddRange(Singleton<GameWorld>.Instance.AllAlivePlayersList.Select(x => x.ProfileId));
-            }
-            //
-            // -----------------------------------------------------------------------------------------------------------
-            // Ensure this is a distinct list of Ids
-            d["pL"] = playerList.Distinct();
-            var jsonDataToSend = d.ToJson();
-
-            try
-            {
-                m_CharactersJson = await RequestingObj.PostJsonAsync<Dictionary<string, object>[]>("/coop/server/read/players", jsonDataToSend, 30000);
-                if (m_CharactersJson == null)
-                    return;
-
-                if (!m_CharactersJson.Any())
-                    return;
-
-                if (m_CharactersJson[0].ContainsKey("notFound"))
-                {
-                    // Game is broken and doesn't exist!
-                    if (LocalGameInstance != null)
-                    {
-                        ServerHasStopped = true;
-                    }
-                    return;
-                }
-
-                //Logger.LogDebug($"CoopGameComponent.ReadFromServerCharacters:{actionsToValues.Length}");
-
-                var packets = m_CharactersJson
-                     .Where(x => x != null);
-                if (packets == null)
-                    return;
-
-                foreach (var queuedPacket in packets)
-                {
-                    if (queuedPacket != null && queuedPacket.Count > 0)
-                    {
-                        if (queuedPacket != null)
-                        {
-                            if (queuedPacket.ContainsKey("m"))
-                            {
-                                var method = queuedPacket["m"].ToString();
-                                if (method != "PlayerSpawn")
-                                    continue;
-
-                                string profileId = queuedPacket["profileId"].ToString();
-                                if (!PluginConfigSettings.Instance.CoopSettings.SETTING_DEBUGSpawnDronesOnServer)
-                                {
-                                    if (Players == null
-                                        || Players.ContainsKey(profileId)
-                                        || Singleton<GameWorld>.Instance.RegisteredPlayers.Any(x => x.ProfileId == profileId)
-                                        )
-                                    {
-                                        Logger.LogDebug($"Ignoring call to Spawn player {profileId}. The player already exists in the game.");
-                                        continue;
-                                    }
-                                }
-
-                                if (PlayersToSpawn.ContainsKey(profileId))
-                                    continue;
-
-                                if (!PlayersToSpawnPacket.ContainsKey(profileId))
-                                    PlayersToSpawnPacket.TryAdd(profileId, queuedPacket);
-
-                                if (!PlayersToSpawn.ContainsKey(profileId))
-                                    PlayersToSpawn.TryAdd(profileId, ESpawnState.None);
-
-                                if (queuedPacket.ContainsKey("isAI"))
-                                    Logger.LogDebug($"{nameof(ReadFromServerCharacters)}:isAI:{queuedPacket["isAI"]}");
-
-                                if (queuedPacket.ContainsKey("isAI") && queuedPacket["isAI"].ToString() == "True" && !ProfileIdsAI.Contains(profileId))
-                                {
-                                    ProfileIdsAI.Add(profileId);
-                                    Logger.LogDebug($"Added AI Character {profileId} to {nameof(ProfileIdsAI)}");
-                                }
-
-                                if (queuedPacket.ContainsKey("isAI") && queuedPacket["isAI"].ToString() == "False" && !ProfileIdsUser.Contains(profileId))
-                                {
-                                    ProfileIdsUser.Add(profileId);
-                                    Logger.LogDebug($"Added User Character {profileId} to {nameof(ProfileIdsUser)}");
-                                }
-
-                            }
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-
-                Logger.LogError(ex.ToString());
-
-            }
-            finally
-            {
-
-            }
-        }
-
-        private IEnumerator ProcessServerCharacters()
-        {
-            var waitEndOfFrame = new WaitForEndOfFrame();
-
-            if (GetServerId() == null)
-                yield return waitEndOfFrame;
-
-            var waitSeconds = new WaitForSeconds(0.5f);
-
-            while (RunAsyncTasks)
-            {
-                yield return waitSeconds;
+            //while (RunAsyncTasks)
+            //{
+            //    yield return waitSeconds;
                 foreach (var p in PlayersToSpawn)
                 {
                     // If not showing drones. Check whether the "Player" has been registered, if they have, then ignore the drone
@@ -904,31 +1200,17 @@ namespace StayInTarkov.Coop.Components.CoopGameComponents
                     if (PlayersToSpawn[p.Key] == ESpawnState.Spawned)
                         continue;
 
-                    Vector3 newPosition = Vector3.zero;
-                    if (PlayersToSpawnPacket[p.Key].ContainsKey("sPx")
-                        && PlayersToSpawnPacket[p.Key].ContainsKey("sPy")
-                        && PlayersToSpawnPacket[p.Key].ContainsKey("sPz"))
-                    {
-                        string npxString = PlayersToSpawnPacket[p.Key]["sPx"].ToString();
-                        newPosition.x = float.Parse(npxString);
-                        string npyString = PlayersToSpawnPacket[p.Key]["sPy"].ToString();
-                        newPosition.y = float.Parse(npyString);
-                        string npzString = PlayersToSpawnPacket[p.Key]["sPz"].ToString();
-                        newPosition.z = float.Parse(npzString) + 0.5f;
-                        ProcessPlayerBotSpawn(PlayersToSpawnPacket[p.Key], p.Key, newPosition, false);
-                    }
-                    else
-                    {
-                        Logger.LogError($"ReadFromServerCharacters::PlayersToSpawnPacket does not have positional data for {p.Key}");
-                    }
+                    Vector3 newPosition = PlayersToSpawnPacket[p.Key].BodyPosition;
+                    //ProcessPlayerBotSpawn(PlayersToSpawnPacket[p.Key], p.Key, newPosition, false, PlayersToSpawnPacket[p.Key].InitialInventoryMongoId);
+                    ProcessPlayerBotSpawn(PlayersToSpawnPacket[p.Key], p.Key, newPosition, PlayersToSpawnPacket[p.Key].IsAI, PlayersToSpawnPacket[p.Key].InitialInventoryMongoId);
                 }
 
 
-                yield return waitEndOfFrame;
-            }
+            //    yield return waitEndOfFrame;
+            //}
         }
 
-        private void ProcessPlayerBotSpawn(Dictionary<string, object> packet, string profileId, Vector3 newPosition, bool isBot)
+        private void ProcessPlayerBotSpawn(PlayerInformationPacket packet, string profileId, Vector3 newPosition, bool isBot, string mongoId)
         {
             // If not showing drones. Check whether the "Player" has been registered, if they have, then ignore the drone
             if (!PluginConfigSettings.Instance.CoopSettings.SETTING_DEBUGSpawnDronesOnServer)
@@ -950,50 +1232,65 @@ namespace StayInTarkov.Coop.Components.CoopGameComponents
                 }
             }
 
+            if (!PlayerInventoryMongoIds.ContainsKey(profileId))
+                PlayerInventoryMongoIds.TryAdd(profileId, mongoId);
 
-            // If CreatePhysicalOtherPlayerOrBot has been done before. Then ignore the Deserialization section and continue.
-            if (PlayersToSpawn.ContainsKey(profileId)
-                && PlayersToSpawnProfiles.ContainsKey(profileId)
-                && PlayersToSpawnProfiles[profileId] != null
-                )
+
+            if (!PlayersToSpawnPositions.ContainsKey(profileId))
+                PlayersToSpawnPositions.TryAdd(profileId, newPosition);
+
+            if (!PlayersToSpawnProfiles.ContainsKey(profileId))
             {
-                var isDead = false;
-                if (packet.ContainsKey("isDead"))
-                {
-                    Logger.LogDebug($"{DateTime.Now.ToString("MM/dd/yyyy HH:mm:ss.fff")}: Packet for {profileId} contains DEATH message, registered handling of this on spawn");
-                    isDead = bool.Parse(packet["isDead"].ToString());
-                }
-                CreatePhysicalOtherPlayerOrBot(PlayersToSpawnProfiles[profileId], newPosition, isDead);
-                return;
+                PlayersToSpawnProfiles.Add(profileId, null);
+
+                Logger.LogDebug($"ProcessPlayerBotSpawn:{profileId}");
+                //if (packet.Profile == null)
+                //    return;
+
+                Profile profile = new();
+                profile = packet.Profile;
+                //profile.AccountId = packet.AccountId;
+                //profile.AchievementsData = new Dictionary<string, int>();
+                //profile.BonusController = new BonusController();
+                //profile.Bonuses = null;
+                //profile.CheckedChambers = new();
+                //profile.CheckedMagazines = new();
+                //profile.Customization = new Customization(packet.Customization);
+                //profile.EftStats = new();
+                //profile.Encyclopedia = new();
+                //profile.Id = packet.ProfileId;
+                //profile.Info = new ProfileInfo();
+                //profile.Info.Nickname = packet.NickName;
+                //profile.Info.Side = packet.Side;
+                //profile.Info.Voice = packet.Voice;
+                //profile.Inventory = packet.Inventory;
+                //profile.Stats = new PmcStats();
+                //profile.Health = packet.ProfileHealth;
+                profile.Skills.StartClientMode();
+                PlayersToSpawnProfiles[profileId] = profile;
             }
+            else
+                CreatePhysicalOtherPlayerOrBot(PlayersToSpawnProfiles[profileId], false);
 
-            if (PlayersToSpawnProfiles.ContainsKey(profileId))
-                return;
-
-            PlayersToSpawnProfiles.Add(profileId, null);
-
-            Logger.LogDebug($"ProcessPlayerBotSpawn:{profileId}");
-
-            Profile profile = new();
-            if (packet.ContainsKey("profileJson"))
-            {
-                if (packet["profileJson"].ToString().TrySITParseJson(out profile))
-                {
-                    //Logger.LogInfo("Obtained Profile");
-                    profile.Skills.StartClientMode();
-                    // Send to be loaded
-                    PlayersToSpawnProfiles[profileId] = profile;
-                }
-                else
-                {
-                    Logger.LogError("Unable to Parse Profile");
-                    PlayersToSpawn[profileId] = ESpawnState.Error;
-                    return;
-                }
-            }
+            //if (packet.ContainsKey("profileJson"))
+            //{
+            //    if (packet["profileJson"].ToString().TrySITParseJson(out profile))
+            //    {
+            //        //Logger.LogInfo("Obtained Profile");
+            //        profile.Skills.StartClientMode();
+            //        // Send to be loaded
+            //        PlayersToSpawnProfiles[profileId] = profile;
+            //    }
+            //    else
+            //    {
+            //        Logger.LogError("Unable to Parse Profile");
+            //        PlayersToSpawn[profileId] = ESpawnState.Error;
+            //        return;
+            //    }
+            //}
         }
 
-        private void CreatePhysicalOtherPlayerOrBot(Profile profile, Vector3 position, bool isDead = false)
+        private void CreatePhysicalOtherPlayerOrBot(Profile profile, bool isDead = false)
         {
             try
             {
@@ -1062,6 +1359,7 @@ namespace StayInTarkov.Coop.Components.CoopGameComponents
                 // Its loading on the previous pass, ignore this one until its finished
                 if (PlayersToSpawn[profile.ProfileId] == ESpawnState.Loading)
                 {
+                    //Logger.LogDebug($"CreatePhysicalOtherPlayerOrBot::{profile.Info.Nickname}::Is still loading");
                     return;
                 }
 
@@ -1078,7 +1376,7 @@ namespace StayInTarkov.Coop.Components.CoopGameComponents
 
                 // ------------------------------------------------------------------
                 // Create Local Player drone
-                LocalPlayer otherPlayer = CreateLocalPlayer(profile, position, playerId);
+                LocalPlayer otherPlayer = CreateLocalPlayer(profile, PlayersToSpawnPositions[profile.Id], playerId);
                 if(otherPlayer == null)
                 {
                     PlayersToSpawn[profile.ProfileId] = ESpawnState.Spawning;
@@ -1102,7 +1400,7 @@ namespace StayInTarkov.Coop.Components.CoopGameComponents
 
         private LocalPlayer CreateLocalPlayer(Profile profile, Vector3 position, int playerId)
         {
-            Logger.LogInfo($"{nameof(CreateLocalPlayer)}:{nameof(position)}:{position}");
+            Logger.LogDebug($"{nameof(CreateLocalPlayer)}:{nameof(position)}:{position}");
 
             // If this is an actual PLAYER player that we're creating a drone for, when we set
             // aiControl to true then they'll automatically run voice lines (eg when throwing
@@ -1138,13 +1436,14 @@ namespace StayInTarkov.Coop.Components.CoopGameComponents
                , null
                , isYourPlayer: false
                , isClientDrone: true
+               , initialMongoId: PlayerInventoryMongoIds[profile.Id]    
                ).Result;
 
             if (otherPlayer == null)
                 return null;
 
-            otherPlayer.Position = position + new Vector3(0, 1, 0);
-            otherPlayer.Transform.position = position + new Vector3(0, 1, 0);
+            otherPlayer.Position = position;
+            otherPlayer.Transform.position = position;
 
             // ----------------------------------------------------------------------------------------------------
             // Add the player to the custom Players list
@@ -1165,8 +1464,8 @@ namespace StayInTarkov.Coop.Components.CoopGameComponents
 
             // Create/Add PlayerReplicatedComponent to the LocalPlayer
             // This shouldn't be needed. Handled in CoopPlayer.Create code
-            var prc = otherPlayer.GetOrAddComponent<PlayerReplicatedComponent>();
-            prc.IsClientDrone = true;
+            //var prc = otherPlayer.GetOrAddComponent<PlayerReplicatedComponent>();
+            //prc.IsClientDrone = true;
 
             if (!SITMatchmaking.IsClient)
             {
@@ -1285,7 +1584,6 @@ namespace StayInTarkov.Coop.Components.CoopGameComponents
         {
             // What this does is create a ISITPacket for the Character's health that can be SIT Serialized.
             PlayerHealthPacket playerHealth = new PlayerHealthPacket(player.ProfileId);
-            playerHealth.Method = "53xMOD";
             playerHealth.IsAlive = player.HealthController.IsAlive;
             playerHealth.Energy = player.HealthController.Energy.Current;
             playerHealth.Hydration = player.HealthController.Hydration.Current;

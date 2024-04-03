@@ -2,7 +2,7 @@
 using EFT.HealthSystem;
 using StayInTarkov.Coop.Controllers.CoopInventory;
 using StayInTarkov.Coop.Controllers;
-using StayInTarkov.Core.Player;
+//using StayInTarkov.Core.Player;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -20,7 +20,7 @@ namespace StayInTarkov.Coop.Players
     {
         public static QuestController GetQuestController(EFT.Profile profile, InventoryControllerClass inventoryController)
         {
-            var questController = new QuestController(profile, inventoryController, null, true);
+            var questController = new QuestController(profile, inventoryController, null, false);
             questController.Init();
             questController.Run();
             return questController;

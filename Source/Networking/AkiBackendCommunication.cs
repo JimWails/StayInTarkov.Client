@@ -88,6 +88,7 @@ namespace StayInTarkov.Networking
 
         public static int PING_LIMIT_HIGH { get; } = 125;
         public static int PING_LIMIT_MID { get; } = 100;
+        public static bool IsLocal;
 
 
         protected AkiBackendCommunication(ManualLogSource logger = null)
@@ -104,6 +105,9 @@ namespace StayInTarkov.Networking
 
             if (string.IsNullOrEmpty(RemoteEndPoint))
                 RemoteEndPoint = StayInTarkovHelperConstants.GetBackendUrl();
+
+            IsLocal = RemoteEndPoint.Contains("127.0.0.1")
+                    || RemoteEndPoint.Contains("localhost");
 
             GetHeaders();
             ConnectToAkiBackend();
@@ -452,7 +456,7 @@ namespace StayInTarkov.Networking
                     if (WebSocket.ReadyState != WebSocketSharp.WebSocketState.Open)
                         continue;
 
-                    if (!CoopGameComponent.TryGetCoopGameComponent(out var coopGameComponent))
+                    if (!SITGameComponent.TryGetCoopGameComponent(out var coopGameComponent))
                         continue;
 
                     // PatchConstants.Logger.LogDebug($"WS:Ping Send");
@@ -752,22 +756,46 @@ namespace StayInTarkov.Networking
                 return dataStream.ToArray();
         }
 
+        public byte[] GetBundleData(string url, int timeout = 300000)
+        {
+            using (var dataStream = SendAndReceive(url, "GET", null, true, timeout))
+                return dataStream.ToArray();
+        }
+
         public void PutJson(string url, string data, bool compress = true, int timeout = 9999, bool debug = false)
         {
             using (Stream stream = SendAndReceive(url, "PUT", data, compress, timeout, debug)) { }
         }
 
+        //public string GetJson(string url, bool compress = true, int timeout = 9999)
+        //{
+        //    using (MemoryStream stream = SendAndReceive(url, "GET", null, compress, timeout))
+        //    {
+        //        if (stream == null)
+        //            return "";
+        //        var bytes = stream.ToArray();
+        //        var result = Zlib.Decompress(bytes);
+        //        bytes = null;
+        //        return result;
+        //    }
+        //}
+
         public string GetJson(string url, bool compress = true, int timeout = 9999)
         {
-            using (MemoryStream stream = SendAndReceive(url, "GET", null, compress, timeout))
+            string result = null;
+            int attempts = 10;
+            while (result == null && attempts-- > 0)
             {
-                if (stream == null)
-                    return "";
-                var bytes = stream.ToArray();
-                var result = Zlib.Decompress(bytes);
-                bytes = null;
-                return result;
+                using (MemoryStream stream = SendAndReceive(url, "GET", null, compress, timeout))
+                {
+                    if (stream == null)
+                        return "";
+                    var bytes = stream.ToArray();
+                    result = Zlib.Decompress(bytes);
+                    bytes = null;
+                }
             }
+            return result;
         }
 
         public string PostJson(string url, string data, bool compress = true, int timeout = 9999, bool debug = false)
