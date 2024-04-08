@@ -1,4 +1,4 @@
-﻿using Aki.Custom.Airdrops;
+﻿﻿using Aki.Custom.Airdrops;
 using Aki.Custom.Airdrops.Models;
 using BepInEx.Logging;
 using Comfort.Common;
@@ -24,7 +24,6 @@ using System.Reflection;
 using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.Profiling;
-using static UnityEngine.UIElements.StyleVariableResolver;
 
 namespace StayInTarkov.Coop.Components
 {
@@ -107,48 +106,59 @@ namespace StayInTarkov.Coop.Components
 
             if (ActionSITPackets.Count > 0)
             {
-                //Stopwatch stopwatchActionPackets = Stopwatch.StartNew();
-                while (ActionSITPackets.TryTake(out var result))
+#if DEBUGPACKETS
+                Stopwatch stopwatchActionPackets = Stopwatch.StartNew();
+#endif
+                while (ActionSITPackets.TryTake(out var packet))
                 {
-                    
-                    //Stopwatch stopwatchActionPacket = Stopwatch.StartNew();
-                    if (!ProcessSITActionPackets(result))
-                    {
-                        continue;
-                    }
+#if DEBUGPACKETS
+                    Stopwatch stopwatchActionPacket = Stopwatch.StartNew();
+#endif
+                    packet.Process();
+
+#if DEBUGPACKETS
+                    if (stopwatchActionPacket.ElapsedMilliseconds > 1)
+                        Logger.LogDebug($"ActionSITPacket {packet.Method} took {stopwatchActionPacket.ElapsedMilliseconds}ms to process!");
+#endif
                 }
+#if DEBUGPACKETS
+                if (stopwatchActionPackets.ElapsedMilliseconds > 1)
+                    Logger.LogDebug($"ActionSITPackets took {stopwatchActionPackets.ElapsedMilliseconds}ms to process!");
+#endif
             }
 
             if (ActionPackets.Count > 0)
             {
+#if DEBUGPACKETS
                 Stopwatch stopwatchActionPackets = Stopwatch.StartNew();
+#endif
                 while (ActionPackets.TryTake(out var result))
                 {
+#if DEBUGPACKETS
                     Stopwatch stopwatchActionPacket = Stopwatch.StartNew();
+#endif
                     if (!ProcessLastActionDataPacket(result))
                     {
                         //ActionPackets.Add(result);
                         continue;
                     }
 
+#if DEBUGPACKETS
                     if (stopwatchActionPacket.ElapsedMilliseconds > 1)
-                    {
-#if DEBUG
                         Logger.LogDebug($"ActionPacket {result["m"]} took {stopwatchActionPacket.ElapsedMilliseconds}ms to process!");
 #endif
-                    }
                 }
+#if DEBUGPACKETS
                 if (stopwatchActionPackets.ElapsedMilliseconds > 1)
-                {
-#if DEBUG
-                    Logger.LogDebug($"ActionPackets took {stopwatchActionPackets.ElapsedMilliseconds}ms to process!"); 
+                    Logger.LogDebug($"ActionPackets took {stopwatchActionPackets.ElapsedMilliseconds}ms to process!");
 #endif
-                }
             }
 
             if (ActionPacketsMovement != null && ActionPacketsMovement.Count > 0)
             {
+#if DEBUGPACKETS
                 Stopwatch stopwatchActionPacketsMovement = Stopwatch.StartNew();
+#endif
                 while (ActionPacketsMovement.TryTake(out var result))
                 {
                     if (!ProcessLastActionDataPacket(result))
@@ -157,12 +167,12 @@ namespace StayInTarkov.Coop.Components
                         continue;
                     }
                 }
+#if DEBUGPACKETS
                 if (stopwatchActionPacketsMovement.ElapsedMilliseconds > 1)
                 {
-#if DEBUG
                     Logger.LogDebug($"ActionPacketsMovement took {stopwatchActionPacketsMovement.ElapsedMilliseconds}ms to process!");
-#endif
                 }
+#endif
             }
 
 
