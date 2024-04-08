@@ -478,6 +478,10 @@ namespace StayInTarkov.Coop.SITGameModes
 
         public BossLocationSpawn[] FixBossWaveSettings(WavesSettings wavesSettings, LocationSettingsClass.Location location)
         {
+#if DEBUG
+            Logger.LogDebug($"{nameof(FixBossWaveSettings)}:{location.ToJson()}");
+#endif
+
             var bossLocationSpawns = location.BossLocationSpawn;
             if (!wavesSettings.IsBosses)
             {
@@ -502,9 +506,6 @@ namespace StayInTarkov.Coop.SITGameModes
                     continue;
                 }
                 float bossChance = bossLocationSpawn.BossChance;
-//#if DEBUG
-//                bossChance = 100f;
-//#endif
                 if (CanSpawnCultist(GameWorldTime.Hour) && (bossLocationSpawn.BossType == WildSpawnType.sectantPriest || bossLocationSpawn.BossType == WildSpawnType.sectantWarrior))
                 {
                     Logger.LogDebug($"Block spawn of Sectant (Cultist) in day time in hour {GameWorldTime.Hour}!");
@@ -512,7 +513,7 @@ namespace StayInTarkov.Coop.SITGameModes
                 }
                 bossLocationSpawn.BossChance = bossChance;
                 bossLocationSpawn.BossEscortAmount = sourceEscortAmount != null ? sourceEscortAmount.Max((int x) => x).ToString() : "1";
-                if (bossLocationSpawn.Supports == null && !string.IsNullOrEmpty(bossLocationSpawn.BossEscortType))
+                if (bossLocationSpawn.Supports == null && !string.IsNullOrEmpty(bossLocationSpawn.BossEscortType) && !bossLocationSpawn.BossName.Equals("bossTagilla"))
                 {
                     Logger.LogDebug($"bossLocationSpawn.Supports is Null. Attempt to create them.");
 
@@ -1289,11 +1290,10 @@ namespace StayInTarkov.Coop.SITGameModes
                 return;
 
             Logger.LogDebug($"{nameof(ExfiltrationPoint_OnCancelExtraction)} {point.Settings.Name} {point.Status}");
-
             ExtractingPlayers.Remove(player.ProfileId);
 
             MyExitLocation = null;
-            //player.SwitchRenderer(true);
+            MyExitStatus = player.HealthController.IsAlive ? ExitStatus.MissingInAction : ExitStatus.Killed;
         }
 
         private void ExfiltrationPoint_OnStartExtraction(ExfiltrationPoint point, EFT.Player player)
@@ -1303,15 +1303,14 @@ namespace StayInTarkov.Coop.SITGameModes
 
             Logger.LogDebug($"{nameof(ExfiltrationPoint_OnStartExtraction)} {point.Settings.Name} {point.Status} {point.Settings.ExfiltrationTime}");
             bool playerHasMetRequirements = !point.UnmetRequirements(player).Any();
-            //if (playerHasMetRequirements && !ExtractingPlayers.ContainsKey(player.ProfileId) && !ExtractedPlayers.Contains(player.ProfileId))
             if (!ExtractingPlayers.ContainsKey(player.ProfileId) && !ExtractedPlayers.Contains(player.ProfileId))
             {
                 ExtractingPlayers.Add(player.ProfileId, (point.Settings.ExfiltrationTime, DateTime.Now.Ticks, point.Settings.Name));
                 Logger.LogDebug($"Added {player.ProfileId} to {nameof(ExtractingPlayers)}");
             }
-            //player.SwitchRenderer(false);
 
             MyExitLocation = point.Settings.Name;
+            MyExitStatus = ExitStatus.Survived;
         }
 
         private void ExfiltrationPoint_OnStatusChanged(ExfiltrationPoint point, EExfiltrationStatus prevStatus)
