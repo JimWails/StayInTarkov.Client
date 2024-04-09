@@ -29,7 +29,9 @@ namespace StayInTarkov.Coop.Controllers.CoopInventory
                 //}
 
                 mongoID_0++;
+#if DEBUG
                 BepInLogger.LogDebug($">> {mongoID_0}");
+#endif
                 return mongoID_0;
             } 
         }

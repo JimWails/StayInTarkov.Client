@@ -79,8 +79,9 @@ namespace StayInTarkov.Coop.NetworkPacket.Player.Proceed
         {
             if (Method != nameof(PlayerProceedMedsPacket))
                 return;
-
+#if DEBUG
             StayInTarkovHelperConstants.Logger.LogDebug($"{GetType()}:{nameof(Process)}");
+#endif
 
             StayInTarkovPlugin.Instance.StartCoroutine(ProceedCoroutine());
         }

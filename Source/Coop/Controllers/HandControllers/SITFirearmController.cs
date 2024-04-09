@@ -21,25 +21,33 @@ namespace StayInTarkov.Coop.Controllers.HandControllers
 
         public override void Spawn(float animationSpeed, Action callback)
         {
+#if DEBUG
             BepInLogger.LogDebug($"{nameof(SITFirearmController)}:{nameof(Spawn)}");
+#endif
             base.Spawn(animationSpeed, callback);
         }
 
         public override void Execute(IOperation1 operation, Callback callback)
         {
+#if DEBUG
             BepInLogger.LogDebug($"{nameof(SITFirearmController)}:{nameof(Execute)}:{operation}");
+#endif
             base.Execute(operation, callback);
         }
 
         public override void Drop(float animationSpeed, Action callback, bool fastDrop = false, Item nextControllerItem = null)
         {
             base.Drop(animationSpeed, callback, fastDrop, nextControllerItem);
+#if DEBUG
             BepInLogger.LogDebug($"{nameof(SITFirearmController)}:{nameof(Drop)}");
+#endif
         }
 
         public override void QuickReloadMag(MagazineClass magazine, Callback callback)
         {
+#if DEBUG
             BepInLogger.LogDebug($"{nameof(SITFirearmController)}:{nameof(QuickReloadMag)}");
+#endif
             if (CanStartReload())
             {
                 base.QuickReloadMag(magazine, callback);

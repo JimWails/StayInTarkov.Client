@@ -42,8 +42,10 @@ namespace StayInTarkov.Coop.Controllers.CoopInventory
 
         public override void Execute(Operation1 operation, Callback callback)
         {
+#if DEBUG
             // Debug the operation
             BepInLogger.LogDebug($"Execute(Operation1 operation,:{operation}");
+#endif
 
             base.Execute(operation, callback);
         }
@@ -130,9 +132,10 @@ namespace StayInTarkov.Coop.Controllers.CoopInventory
             itemPlayerPacket.CallbackId = operation.Id;
             itemPlayerPacket.InventoryId = this.ID;
             itemPlayerPacket.StackObjectsCount = stackObjectsCount;
-            
 
+#if DEBUG
             BepInLogger.LogDebug($"Operation: {operation.GetType().Name}, IC Name: {this.Name}, {Player.name}");
+#endif
 
             GameClient.SendData(itemPlayerPacket.Serialize());
 
