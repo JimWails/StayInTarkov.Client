@@ -29,6 +29,7 @@ using System.Text;
 using System.Threading;
 using BepInEx.Configuration;
 using UnityEngine;
+using StayInTarkov.Bundles;
 
 namespace StayInTarkov
 {
@@ -51,6 +52,7 @@ namespace StayInTarkov
         /// </summary>
         public static PluginConfigSettings Settings { get; private set; }
 
+        public static InternalBundleLoader BundleLoaderPlugin { get; private set; }
         /// <summary>
         /// If any mod dependencies fail, show an error. This is a flag to say it has occurred.
         /// </summary>
@@ -105,6 +107,9 @@ namespace StayInTarkov
             EnableAirdropPatches();
 
             ThirdPartyModPatches.Run(Config, this);
+
+            BundleLoaderPlugin = new InternalBundleLoader();
+            BundleLoaderPlugin.Create();
 
             Logger.LogInfo($"Stay in Tarkov is loaded!");
         }

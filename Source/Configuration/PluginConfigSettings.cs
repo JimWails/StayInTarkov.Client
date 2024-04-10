@@ -3,6 +3,7 @@ using BepInEx.Logging;
 using StayInTarkov.Networking;
 using System;
 using System.Net;
+using UnityEngine;
 
 #nullable enable
 
@@ -103,6 +104,12 @@ namespace StayInTarkov.Configuration
 
             public int WaitingTimeBeforeStart { get; private set; }
 
+            public bool UsePingSystem { get; set; }
+            public KeyboardShortcut PingButton { get; set; }
+            public Color PingColor { get; set; }
+            public float PingSize { get; set; }
+            public bool PlayPingAnimation { get; set; }
+
             public int BlackScreenOnDeathTime
             {
                 get
@@ -192,6 +199,12 @@ namespace StayInTarkov.Configuration
                     AllPlayersSpawnTogether = false;
                     EnableAISpawnWaveSystem = false;
                 }
+
+                UsePingSystem = StayInTarkovPlugin.Instance.Config.Bind("Coop | Custom", "Ping System", false, new ConfigDescription("Toggle Ping System. If enabled you can receive and send pings by pressing the ping key.")).Value;
+                PingButton = StayInTarkovPlugin.Instance.Config.Bind("Coop | Custom", "Ping Button", new KeyboardShortcut(KeyCode.U, Array.Empty<KeyCode>()), new ConfigDescription("Button used to send pings.")).Value;
+                PingColor = StayInTarkovPlugin.Instance.Config.Bind("Coop | Custom", "Ping Color", Color.white, new ConfigDescription("The color of your pings when displayed for other players.")).Value;
+                PingSize = StayInTarkovPlugin.Instance.Config.Bind("Coop | Custom", "Ping Size", 1f, new ConfigDescription("The multiplier of the ping size.", new AcceptableValueRange<float>(0.1f, 2f))).Value;
+                PlayPingAnimation = StayInTarkovPlugin.Instance.Config.Bind("Coop | Custom", "Play Ping Animation", false, new ConfigDescription("Plays the pointing animation automatically when pinging. Can interfere with gameplay.")).Value;
             }
         }
     }
