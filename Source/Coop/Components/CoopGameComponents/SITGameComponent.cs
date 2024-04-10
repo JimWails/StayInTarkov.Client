@@ -53,6 +53,7 @@ namespace StayInTarkov.Coop.Components.CoopGameComponents
         public long Timestamp { get; set; } = 0;
         public ushort AkiBackendPing = 0;
 
+        private CoopPlayer player;
         /// <summary>
         /// ProfileId to Player instance
         /// </summary>
@@ -892,6 +893,7 @@ namespace StayInTarkov.Coop.Components.CoopGameComponents
             if (!Singleton<ISITGame>.Instantiated)
                 return;
 
+            ProcessPing();
             ProcessQuitting();
             ProcessServerHasStopped();
             ProcessServerCharacters();
@@ -944,6 +946,24 @@ namespace StayInTarkov.Coop.Components.CoopGameComponents
             {
                 SITCheckConfirmed[1] = 1;
                 Singleton<PreloaderUI>.Instance.ShowCriticalErrorScreen("", StayInTarkovPlugin.IllegalMessage, ErrorScreen.EButtonType.QuitButton, 60, () => { Application.Quit(); }, () => { Application.Quit(); });
+            }
+        }
+
+        void ProcessPing()
+        {
+            bool PingKeyDown = Input.GetKeyDown(PluginConfigSettings.Instance.CoopSettings.PingButton.MainKey) && PluginConfigSettings.Instance.CoopSettings.UsePingSystem;
+            if (PingKeyDown)
+            {
+                var gameWorld = Singleton<GameWorld>.Instance;
+                var myPlayer = gameWorld.MainPlayer;
+                if (myPlayer.IsYourPlayer && myPlayer.HealthController.IsAlive)
+                {
+                    CoopPlayer coopPlayer = myPlayer as CoopPlayer;
+                    if (coopPlayer != null)
+                    {
+                        coopPlayer.Ping();
+                    }
+                }
             }
         }
 

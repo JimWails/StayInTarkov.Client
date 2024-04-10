@@ -1,26 +1,34 @@
 ﻿using BepInEx.Logging;
 using Comfort.Common;
 using EFT;
+using EFT.Communications;
 using EFT.HealthSystem;
 using EFT.Interactive;
 using EFT.InventoryLogic;
+using EFT.UI;
+using LiteNetLib.Utils;
 using Newtonsoft.Json.Linq;
 using RootMotion.FinalIK;
 using StayInTarkov.AkiSupport.Singleplayer.Utils.InRaid;
+using StayInTarkov.Configuration;
 using StayInTarkov.Coop.Components.CoopGameComponents;
 using StayInTarkov.Coop.Controllers;
 using StayInTarkov.Coop.Controllers.CoopInventory;
 using StayInTarkov.Coop.Controllers.HandControllers;
 using StayInTarkov.Coop.Controllers.Health;
+using StayInTarkov.Coop.Factories;
 using StayInTarkov.Coop.Matchmaker;
 using StayInTarkov.Coop.NetworkPacket.Player;
 using StayInTarkov.Coop.NetworkPacket.Player.Health;
 using StayInTarkov.Coop.NetworkPacket.Player.Proceed;
+using StayInTarkov.Coop.SITGameModes;
+
 //using StayInTarkov.Core.Player;
 using StayInTarkov.Networking;
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Net.Mail;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
@@ -935,6 +943,135 @@ namespace StayInTarkov.Coop.Players
             }
 
 
+        }
+
+        private DateTime lastPingTime;
+        public void Ping()
+        {
+            CoopSITGame coopGame = Singleton<ISITGame>.Instance as CoopSITGame;
+            bool flag = coopGame.Status != GameStatus.Started;
+            if (!flag)
+            {
+                bool flag2 = this.lastPingTime < DateTime.Now.AddSeconds(-3.0);
+                if (flag2)
+                {
+                    Ray ray = new Ray(base.CameraPosition.position + base.CameraPosition.forward / 2f, base.CameraPosition.forward);
+                    int mask = LayerMask.GetMask(new string[] { "HighPolyCollider", "Interactive", "Deadbody", "Player", "Loot", "Terrain" });
+                    RaycastHit raycastHit;
+                    bool flag3 = Physics.Raycast(ray, out raycastHit, 500f, mask);
+                    if (flag3)
+                    {
+                        this.lastPingTime = DateTime.Now;
+                        Singleton<GUISounds>.Instance.PlayUISound(EUISoundType.QuestSubTrackComplete);
+                        GameObject gameObject = raycastHit.collider.gameObject;
+                        int layer = gameObject.layer;
+                        PingFactory.EPingType epingType = PingFactory.EPingType.Point;
+                        object obj = null;
+                        bool flag4 = LayerMask.LayerToName(layer) == "Player";
+                        if (flag4)
+                        {
+                            EFT.Player player;
+                            bool flag5 = gameObject.TryGetComponent<EFT.Player>(out player);
+                            if (flag5)
+                            {
+                                epingType = PingFactory.EPingType.Player;
+                                obj = player;
+                            }
+                        }
+                        else
+                        {
+                            bool flag6 = LayerMask.LayerToName(layer) == "Deadbody";
+                            if (flag6)
+                            {
+                                epingType = PingFactory.EPingType.DeadBody;
+                                obj = gameObject;
+                            }
+                            else
+                            {
+                                LootableContainer lootableContainer;
+                                bool flag7 = gameObject.TryGetComponent<LootableContainer>(out lootableContainer);
+                                if (flag7)
+                                {
+                                    epingType = PingFactory.EPingType.LootContainer;
+                                    obj = lootableContainer;
+                                }
+                                else
+                                {
+                                    LootItem lootItem;
+                                    bool flag8 = gameObject.TryGetComponent<LootItem>(out lootItem);
+                                    if (flag8)
+                                    {
+                                        epingType = PingFactory.EPingType.LootItem;
+                                        obj = lootItem;
+                                    }
+                                    else
+                                    {
+                                        Door door;
+                                        bool flag9 = gameObject.TryGetComponent<Door>(out door);
+                                        if (flag9)
+                                        {
+                                            epingType = PingFactory.EPingType.Door;
+                                            obj = door;
+                                        }
+                                        else
+                                        {
+                                            InteractableObject interactableObject;
+                                            bool flag10 = gameObject.TryGetComponent<InteractableObject>(out interactableObject);
+                                            if (flag10)
+                                            {
+                                                epingType = PingFactory.EPingType.Interactable;
+                                                obj = interactableObject;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        GameObject gameObject2 = PingFactory.AbstractPing.pingBundle.LoadAsset<GameObject>("BasePingPrefab");
+                        GameObject gameObject3 = Instantiate<GameObject>(gameObject2);
+                        Vector3 point = raycastHit.point;
+                        PingFactory.AbstractPing abstractPing = PingFactory.FromPingType(epingType, gameObject3);
+                        Color value = PluginConfigSettings.Instance.CoopSettings.PingColor;
+                        value = new Color(value.r, value.g, value.b, 1f);
+                        if (abstractPing != null)
+                        {
+                            abstractPing.Initialize(ref point, obj, value);
+                        }
+                        PingPacket pingPacket = new PingPacket
+                        {
+                            ProfileId = this.ProfileId,
+                            PingLocation = point,
+                            PingType = epingType,
+                            PingColor = value,
+                            Nickname = this.Profile.Info.Nickname
+                        };
+                        GameClient.SendData(pingPacket.Serialize());
+                        bool value2 = PluginConfigSettings.Instance.CoopSettings.PlayPingAnimation;
+                        if (value2)
+                        {
+                            this.vmethod_3(EGesture.ThatDirection);
+                        }
+                    }
+                }
+            }
+        }
+
+        public void ReceivePing(Vector3 location, PingFactory.EPingType pingType, Color pingColor, string nickname)
+        {
+            GameObject gameObject = PingFactory.AbstractPing.pingBundle.LoadAsset<GameObject>("BasePingPrefab");
+            GameObject gameObject2 = Instantiate<GameObject>(gameObject);
+            PingFactory.AbstractPing abstractPing = PingFactory.FromPingType(pingType, gameObject2);
+            bool flag = abstractPing != null;
+            if (flag)
+            {
+                abstractPing.Initialize(ref location, null, pingColor);
+                Singleton<GUISounds>.Instance.PlayUISound(EUISoundType.QuestSubTrackComplete);
+                NotificationManagerClass.DisplayMessageNotification("Received a ping from '" + nickname + "'", ENotificationDurationType.Default, ENotificationIconType.Friend, null);
+            }
+            else
+            {
+                BepInLogger.LogError(string.Format("Received {0} from {1} but factory failed to handle it", pingType, nickname));
+            }
         }
 
     }

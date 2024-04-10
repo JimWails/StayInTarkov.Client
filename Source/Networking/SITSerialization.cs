@@ -75,6 +75,22 @@ namespace StayInTarkov.Networking
             }
         }
 
+        public class ColorUtils
+        {
+            public static void Serialize(BinaryWriter writer, Color color)
+            {
+                writer.Write(color.r);
+                writer.Write(color.g);
+                writer.Write(color.b);
+                writer.Write(color.a);
+            }
+
+            public static Color Deserialize(BinaryReader reader)
+            {
+                return new Color(reader.ReadFloat(), reader.ReadFloat(), reader.ReadFloat(), reader.ReadFloat());
+            }
+        }
+
         public class PhysicalUtils
         {
             public static void Serialize(NetDataWriter writer, Physical.PhysicalStamina physicalStamina)
