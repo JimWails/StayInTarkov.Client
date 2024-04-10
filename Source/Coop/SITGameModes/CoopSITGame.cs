@@ -12,6 +12,7 @@ using EFT;
 using EFT.AssetsManager;
 using EFT.Bots;
 using EFT.CameraControl;
+using EFT.Counters;
 using EFT.EnvironmentEffect;
 using EFT.Game.Spawning;
 using EFT.InputSystem;
@@ -23,6 +24,7 @@ using EFT.UI.Screens;
 using EFT.Weather;
 using JsonType;
 using Newtonsoft.Json.Linq;
+using StayInTarkov.AkiSupport.Singleplayer.Utils.InRaid;
 using StayInTarkov.Configuration;
 using StayInTarkov.Coop.Components;
 using StayInTarkov.Coop.Components.CoopGameComponents;
@@ -317,13 +319,16 @@ namespace StayInTarkov.Coop.SITGameModes
 
                 if (GameTimer.StartDateTime.HasValue && GameTimer.SessionTime.HasValue)
                 {
-                    Dictionary<string, object> raidTimerDict = new()
-                    {
-                        { "serverId", coopGameComponent.ServerId },
-                        { "m", "RaidTimer" },
-                        { "sessionTime", (GameTimer.SessionTime - GameTimer.PastTime).Value.Ticks },
-                    };
-                    Networking.GameClient.SendData(raidTimerDict.ToJson());
+                    //Dictionary<string, object> raidTimerDict = new()
+                    //{
+                    //    { "serverId", coopGameComponent.ServerId },
+                    //    { "m", "RaidTimer" },
+                    //    { "sessionTime", (GameTimer.SessionTime - GameTimer.PastTime).Value.Ticks },
+                    //};
+                    //Networking.GameClient.SendData(raidTimerDict.ToJson());
+                    RaidTimerPacket packet = new RaidTimerPacket();
+                    packet.SessionTime = (GameTimer.SessionTime - GameTimer.PastTime).Value.Ticks;
+                    Networking.GameClient.SendData(packet.Serialize());
                 }
             }
         }
@@ -1274,8 +1279,21 @@ namespace StayInTarkov.Coop.SITGameModes
             Logger.LogDebug($"{nameof(ExfiltrationPoint_OnCancelExtraction)} {point.Settings.Name} {point.Status}");
             ExtractingPlayers.Remove(player.ProfileId);
 
+
+            BackendConfigSettingsClass.BackendConfigSettingsClassExperience.BackendConfigSettingsClassMatchEnd matchEnd = Singleton<BackendConfigSettingsClass>.Instance.Experience.MatchEnd;
+
+
+            if (Profile_0.EftStats.SessionCounters.GetAllInt(new object[] { CounterTag.Exp }) > matchEnd.SurvivedExpRequirement ||
+                RaidTimeUtil.GetElapsedRaidSeconds() > matchEnd.SurvivedTimeRequirement)
+            {
+                MyExitStatus = (player.HealthController.IsAlive ? ExitStatus.MissingInAction : ExitStatus.Killed);
+            }
+            else
+            {
+                MyExitStatus = ExitStatus.Runner;
+            }
+
             MyExitLocation = null;
-            MyExitStatus = player.HealthController.IsAlive ? ExitStatus.MissingInAction : ExitStatus.Killed;
         }
 
         private void ExfiltrationPoint_OnStartExtraction(ExfiltrationPoint point, EFT.Player player)
@@ -1337,7 +1355,7 @@ namespace StayInTarkov.Coop.SITGameModes
             }
         }
 
-        public ExitStatus MyExitStatus { get; set; } = ExitStatus.Survived;
+        public ExitStatus MyExitStatus { get; set; } = ExitStatus.MissingInAction;
         public string MyExitLocation { get; set; } = null;
         public ISpawnSystem SpawnSystem { get; set; }
         public int MaxBotCount { get; private set; }

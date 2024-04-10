@@ -729,9 +729,17 @@ namespace StayInTarkov.Coop.Components.CoopGameComponents
                 }
 
                 if (PlayerUsers.Count() == 1 && quitState == EQuitState.YourTeamHasExtracted)
-                {
                     Singleton<ISITGame>.Instance.MyExitStatus = ExitStatus.Survived;
-                }
+
+                if (Singleton<ISITGame>.Instance.ExtractedPlayers.Contains(Singleton<GameWorld>.Instance.MainPlayer.ProfileId))
+                    Singleton<ISITGame>.Instance.MyExitStatus = ExitStatus.Survived;
+
+                if (!Singleton<GameWorld>.Instance.MainPlayer.HealthController.IsAlive)
+                    Singleton<ISITGame>.Instance.MyExitStatus = ExitStatus.Killed;
+            }
+            else if (Singleton<ISITGame>.Instance.MyExitStatus == ExitStatus.Runner)
+            {
+                Singleton<ISITGame>.Instance.MyExitStatus = ExitStatus.Runner;
             }
 
 

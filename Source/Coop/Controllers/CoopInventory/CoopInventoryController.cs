@@ -239,6 +239,12 @@ namespace StayInTarkov.Coop.Controllers.CoopInventory
             //}
             return result;
         }
+
+        public override bool CheckTransferOwners(Item item, ItemAddress targetAddress, out Error error)
+        {
+            error = null;
+            return true;
+        }
     }
 
 
