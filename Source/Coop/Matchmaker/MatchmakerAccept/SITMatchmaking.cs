@@ -12,6 +12,8 @@ using System.Net;
 using System.Reflection;
 using UnityEngine;
 
+#nullable enable
+
 namespace StayInTarkov.Coop.Matchmaker
 {
     public enum EMatchmakerType
@@ -24,20 +26,20 @@ namespace StayInTarkov.Coop.Matchmaker
     public static class SITMatchmaking
     {
         #region Fields/Properties
-        public static EFT.UI.Matchmaker.MatchMakerAcceptScreen MatchMakerAcceptScreenInstance { get; set; }
-        public static Profile Profile { get; set; }
+        public static EFT.UI.Matchmaker.MatchMakerAcceptScreen? MatchMakerAcceptScreenInstance { get; set; }
+        public static Profile? Profile { get; set; }
         public static EMatchmakerType MatchingType { get; set; } = EMatchmakerType.Single;
         public static bool IsServer => MatchingType == EMatchmakerType.GroupLeader;
         public static bool IsClient => MatchingType == EMatchmakerType.GroupPlayer;
         public static bool IsSinglePlayer => MatchingType == EMatchmakerType.Single;
         public static int HostExpectedNumberOfPlayers { get; set; } = 1;
-        private static string groupId;
+        private static string? groupId;
         private static long timestamp;
         #endregion
 
         #region Static Fields
 
-        public static object MatchmakerScreenController
+        public static object? MatchmakerScreenController
         {
             get
             {
@@ -53,11 +55,10 @@ namespace StayInTarkov.Coop.Matchmaker
             }
         }
 
-        public static GameObject EnvironmentUIRoot { get; internal set; }
-        public static MatchmakerTimeHasCome.TimeHasComeScreenController TimeHasComeScreenController { get; internal set; }
-        public static ESITProtocol SITProtocol { get; internal set; }
-        public static string IPAddress { get; internal set; }
-        public static int Port { get; internal set; }
+        public static MatchmakerTimeHasCome.TimeHasComeScreenController? TimeHasComeScreenController { get; internal set; }
+        public static ESITProtocol SITProtocol { get; internal set; } = ESITProtocol.RelayTcp;
+        public static string PublicIPAddress { get; internal set; } = "";
+        public static int PublicPort { get; internal set; } = 6972;
         public static ManualLogSource Logger { get; }
         #endregion
 
@@ -68,12 +69,11 @@ namespace StayInTarkov.Coop.Matchmaker
 
         public static void Run()
         {
-            new EnvironmentUIRootPatch().Enable();
             new MatchmakerAcceptScreenAwakePatch().Enable();
             new MatchmakerAcceptScreenShowPatch().Enable();
         }
 
-        public static string GetGroupId()
+        public static string? GetGroupId()
         {
             return groupId;
         }
@@ -95,8 +95,9 @@ namespace StayInTarkov.Coop.Matchmaker
 
         public static bool CheckForMatch(RaidSettings settings, string password, out string outJson, out string errorMessage)
         {
-            errorMessage = (string)StayInTarkovPlugin.LanguageDictionary["NO-SERVER-MATCH"]; ;
-            Logger.LogInfo("CheckForMatch");
+            Logger.LogDebug(nameof(CheckForMatch));
+
+            errorMessage = ((string?)StayInTarkovPlugin.LanguageDictionary["NO-SERVER-MATCH"]) ?? "NO-SERVER-MATCH";
             outJson = string.Empty;
 
             if (SITMatchmaking.MatchMakerAcceptScreenInstance != null)
@@ -126,13 +127,13 @@ namespace StayInTarkov.Coop.Matchmaker
 
                         if (outJObject.ContainsKey("invalidPassword"))
                         {
-                            errorMessage = (string)StayInTarkovPlugin.LanguageDictionary["INVALID-PASSWORD"];
+                            errorMessage = (string?)StayInTarkovPlugin.LanguageDictionary["INVALID-PASSWORD"] ?? "INVALID-PASSWORD";
                             return false;
                         }
 
                         if (outJObject.ContainsKey("gameVersion"))
                         {
-                            if (JObject.Parse(outJson)["gameVersion"].ToString() != StayInTarkovPlugin.EFTVersionMajor)
+                            if ((string?)JObject.Parse(outJson)["gameVersion"] != StayInTarkovPlugin.EFTVersionMajor)
                             {
                                 errorMessage = $"{StayInTarkovPlugin.LanguageDictionary["USE-A-DIFFERENT-VERSION-OF-EFT"]} {StayInTarkovPlugin.EFTVersionMajor} {StayInTarkovPlugin.LanguageDictionary["THAN-SERVER-RUNNING"]} {JObject.Parse(outJson)["gameVersion"]}";
                                 return false;
@@ -141,7 +142,7 @@ namespace StayInTarkov.Coop.Matchmaker
 
                         if (outJObject.ContainsKey("sitVersion"))
                         {
-                            if (JObject.Parse(outJson)["sitVersion"].ToString() != Assembly.GetExecutingAssembly().GetName().Version.ToString())
+                            if ((string?)JObject.Parse(outJson)["sitVersion"] != Assembly.GetExecutingAssembly().GetName().Version.ToString())
                             {
                                 errorMessage = $"{StayInTarkovPlugin.LanguageDictionary["USE-A-DIFFERENT-VERSION-OF-SIT"]} {Assembly.GetExecutingAssembly().GetName().Version.ToString()} {StayInTarkovPlugin.LanguageDictionary["THAN-SERVER-RUNNING"]} {JObject.Parse(outJson)["sitVersion"]}";
                                 return false;
@@ -160,7 +161,7 @@ namespace StayInTarkov.Coop.Matchmaker
 
         public static bool TryJoinMatch(RaidSettings settings, string profileId, string serverId, string password, out string outJson, out string errorMessage)
         {
-            errorMessage = (string)StayInTarkovPlugin.LanguageDictionary["NO-SERVER-MATCH"];
+            errorMessage = (string?)StayInTarkovPlugin.LanguageDictionary["NO-SERVER-MATCH"] ?? "NO-SERVER-MATCH";
             Logger.LogDebug("JoinMatch");
             outJson = string.Empty;
 
@@ -178,7 +179,7 @@ namespace StayInTarkov.Coop.Matchmaker
                 {
                     if (outJson.Equals("null", StringComparison.OrdinalIgnoreCase))
                     {
-                        errorMessage = (string)StayInTarkovPlugin.LanguageDictionary["SPT-AKI-SERVER-ERROR"];
+                        errorMessage = (string?)StayInTarkovPlugin.LanguageDictionary["SPT-AKI-SERVER-ERROR"] ?? "SPT-AKI-SERVER-ERROR";
                         return false;
                     }
 
@@ -191,19 +192,19 @@ namespace StayInTarkov.Coop.Matchmaker
 
                     if (outJObject.ContainsKey("invalidPassword"))
                     {
-                        errorMessage = (string)StayInTarkovPlugin.LanguageDictionary["INVALID-PASSWORD"];
+                        errorMessage = (string?)StayInTarkovPlugin.LanguageDictionary["INVALID-PASSWORD"] ?? "INVALID-PASSWORD";
                         return false;
                     }
 
                     if (outJObject.ContainsKey("alreadyConnected"))
                     {
-                        errorMessage = (string)StayInTarkovPlugin.LanguageDictionary["PROFILE-IS-ALREADY"];
+                        errorMessage = (string?)StayInTarkovPlugin.LanguageDictionary["PROFILE-IS-ALREADY"] ?? "PROFILE-IS-ALREADY";
                         return false;
                     }
 
                     if (outJObject.ContainsKey("gameVersion"))
                     {
-                        if (JObject.Parse(outJson)["gameVersion"].ToString() != StayInTarkovPlugin.EFTVersionMajor)
+                        if ((string?)JObject.Parse(outJson)["gameVersion"] != StayInTarkovPlugin.EFTVersionMajor)
                         {
                             errorMessage = $"{StayInTarkovPlugin.LanguageDictionary["USE-A-DIFFERENT-VERSION-OF-EFT"]} {StayInTarkovPlugin.EFTVersionMajor} {StayInTarkovPlugin.LanguageDictionary["THAN-SERVER-RUNNING"]} {JObject.Parse(outJson)["gameVersion"]}";
                             return false;
@@ -212,12 +213,14 @@ namespace StayInTarkov.Coop.Matchmaker
 
                     if (outJObject.ContainsKey("sitVersion"))
                     {
-                        if (JObject.Parse(outJson)["sitVersion"].ToString() != Assembly.GetExecutingAssembly().GetName().Version.ToString())
+                        if ((string?)JObject.Parse(outJson)["sitVersion"] != Assembly.GetExecutingAssembly().GetName().Version.ToString())
                         {
                             errorMessage = $"{StayInTarkovPlugin.LanguageDictionary["USE-A-DIFFERENT-VERSION-OF-SIT"]} {Assembly.GetExecutingAssembly().GetName().Version.ToString()} {StayInTarkovPlugin.LanguageDictionary["THAN-SERVER-RUNNING"]} {JObject.Parse(outJson)["sitVersion"]}";
                             return false;
                         }
                     }
+                    
+                    MatchingType = EMatchmakerType.GroupPlayer;
 
                     return true;
                 }
@@ -230,7 +233,8 @@ namespace StayInTarkov.Coop.Matchmaker
             , string password
             , ESITProtocol protocol
             , string ipAddress
-            , int port)
+            , int port
+            , EMatchmakerType matchmakerType)
         {           
             long timestamp = DateTimeOffset.Now.ToUnixTimeSeconds();
             SITProtocol = protocol;
@@ -244,35 +248,31 @@ namespace StayInTarkov.Coop.Matchmaker
                 { "gameVersion", StayInTarkovPlugin.EFTVersionMajor },
                 { "sitVersion", Assembly.GetExecutingAssembly().GetName().Version },
                 { "protocol", protocol },
-                { "port", port }
+                { "port", port } // NOTE(belette) only needed so that nodejs nathelper can set the "remote" endpoint
             };
 
             if (!string.IsNullOrEmpty(password))
                 objectToSend.Add("password", password);
 
-            if (!string.IsNullOrEmpty(ipAddress))
-                objectToSend.Add("ipAddress", ipAddress);
-
             Logger.LogDebug($"{nameof(CreateMatch)}");
             Logger.LogDebug($"{objectToSend.ToJson()}");
 
-            string result = AkiBackendCommunication.Instance.PostJson("/coop/server/create", JsonConvert.SerializeObject(
-                objectToSend));
+            // KWJimWails: Set request timeout to 20 seconds, because the Streets of Tarkov need a long time to create loot infos.
+            string result = AkiBackendCommunication.Instance.PostJson("/coop/server/create", JsonConvert.SerializeObject(objectToSend), true, 20000);
 
-            if (!string.IsNullOrEmpty(result))
+            if (string.IsNullOrEmpty(result))
             {
-                Logger.LogDebug($"CreateMatch:: Match Created for {profileId}");
-                SetGroupId(profileId);
-                SetTimestamp(timestamp);
-                MatchingType = EMatchmakerType.GroupLeader;
-
-                IPAddress = ipAddress;
-                Port = port;
+                Logger.LogError("CreateMatch:: ERROR: Match NOT Created");
                 return;
             }
 
-            Logger.LogError("CreateMatch:: ERROR: Match NOT Created");
+            Logger.LogDebug($"{nameof(CreateMatch)}: Match Created for {profileId}");
 
+            SetGroupId(profileId);
+            SetTimestamp(timestamp);
+            MatchingType = matchmakerType;
+            PublicIPAddress = ipAddress;
+            PublicPort = port;
         }
     }
 }

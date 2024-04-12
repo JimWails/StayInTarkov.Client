@@ -1,5 +1,6 @@
 ﻿using BepInEx.Logging;
 using Comfort.Common;
+using EFT;
 using EFT.InventoryLogic;
 using EFT.UI;
 using StayInTarkov.Coop.NetworkPacket.Player.Weapons;
@@ -10,6 +11,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using UnityEngine;
 
 namespace StayInTarkov.Coop.Controllers.HandControllers
 {
@@ -169,6 +171,13 @@ namespace StayInTarkov.Coop.Controllers.HandControllers
             base.Pickup(p);
         }
 
+        public override void SetInventoryOpened(bool opened)
+        {
+            SetInventoryOpenedPacket packet = new(_player.ProfileId, opened);
+            GameClient.SendData(packet.Serialize());
+            base.SetInventoryOpened(opened);
+        }
+
         public override void SetLightsState(LightsStates[] lightsStates, bool force = false)
         {
             LightStatesPacket packet = new();
@@ -188,24 +197,66 @@ namespace StayInTarkov.Coop.Controllers.HandControllers
             base.SetScopeMode(scopeStates);
         }
 
-        public override void SetTriggerPressed(bool pressed)
+        //public override void SetTriggerPressed(bool pressed)
+        //{
+        //    TriggerPressedPacket packet = new TriggerPressedPacket(_player.ProfileId);
+        //    packet.Pressed = pressed;
+        //    packet.RotationX = _player.Rotation.x;
+        //    packet.RotationY = _player.Rotation.y;
+
+        //    // TODO: After release, sync amount of bullets used
+        //    if (!pressed)
+        //    {
+        //    }
+
+        //    GameClient.SendData(packet.Serialize());
+
+        //    ((CoopPlayer)_player).TriggerPressed = pressed;
+
+        //    base.SetTriggerPressed(pressed);
+
+        //}
+
+        public override void InitiateShot(IWeapon weapon, BulletClass ammo, Vector3 shotPosition, Vector3 shotDirection, Vector3 fireportPosition, int chamberIndex, float overheat)
         {
-            TriggerPressedPacket packet = new TriggerPressedPacket(_player.ProfileId);
-            packet.Pressed = pressed;
-            packet.RotationX = _player.Rotation.x;
-            packet.RotationY = _player.Rotation.y;
+            base.InitiateShot(weapon, ammo, shotPosition, shotDirection, fireportPosition, chamberIndex, overheat);
 
-            // TODO: After release, sync amount of bullets used
-            if (!pressed)
+            if (((Weapon)weapon).HasChambers && ((Weapon)weapon).Chambers[0].ContainedItem != null && ((Weapon)weapon).Chambers[0].ContainedItem == ammo && ammo.IsUsed)
+                ((Weapon)weapon).Chambers[0].RemoveItem().OrElse(elseValue: false);
+
+            EShotType shotType = EShotType.Unknown;
+            switch (weapon.MalfState.State)
             {
+                case Weapon.EMalfunctionState.None:
+                    shotType = EShotType.RegularShot;
+                    break;
+                case Weapon.EMalfunctionState.Misfire:
+                    shotType = EShotType.Misfire;
+                    break;
+                case Weapon.EMalfunctionState.Jam:
+                    shotType = EShotType.JamedShot;
+                    break;
+                case Weapon.EMalfunctionState.HardSlide:
+                    shotType = EShotType.HardSlidedShot;
+                    break;
+                case Weapon.EMalfunctionState.SoftSlide:
+                    shotType = EShotType.SoftSlidedShot;
+                    break;
+                case Weapon.EMalfunctionState.Feed:
+                    shotType = EShotType.Feed;
+                    break;
             }
-
-            GameClient.SendData(packet.Serialize());
-
-            ((CoopPlayer)_player).TriggerPressed = pressed;
-
-            base.SetTriggerPressed(pressed);
-
+            InitiateShotPacket initiateShotPacket = new InitiateShotPacket(_player.ProfileId);
+            initiateShotPacket.IsPrimaryActive = (weapon == base.Item);
+            initiateShotPacket.ShotType = shotType;
+            initiateShotPacket.ShotPosition = shotPosition;
+            initiateShotPacket.ShotDirection = shotDirection;
+            initiateShotPacket.FireportPosition = fireportPosition;
+            initiateShotPacket.AmmoAfterShot = weapon.GetCurrentMagazineCount();
+            initiateShotPacket.ChamberIndex = chamberIndex;
+            initiateShotPacket.Overheat = overheat;
+            initiateShotPacket.UnderbarrelShot = weapon.IsUnderbarrelWeapon;
+            GameClient.SendData(initiateShotPacket.Serialize());
         }
 
         public override void IEventsConsumerOnFiringBullet()
@@ -227,5 +278,14 @@ namespace StayInTarkov.Coop.Controllers.HandControllers
             GameClient.SendData(packet.Serialize());
             return base.ToggleLauncher();
         }
+
+        public override void CreateFlareShot(BulletClass flareItem, Vector3 shotPosition, Vector3 forward)
+        {
+            var createFlareShotPacket = new CreateFlareShotPacket(_player.ProfileId, shotPosition, forward, flareItem.TemplateId);
+            GameClient.SendData(createFlareShotPacket.Serialize());
+
+            base.CreateFlareShot(flareItem, shotPosition, forward);
+        }
+
     }
 }

@@ -9,31 +9,43 @@ using BepInEx.Logging;
 using Comfort.Common;
 using CommonAssets.Scripts.Game;
 using EFT;
+using EFT.AssetsManager;
 using EFT.Bots;
+using EFT.CameraControl;
+using EFT.Counters;
 using EFT.EnvironmentEffect;
 using EFT.Game.Spawning;
 using EFT.InputSystem;
 using EFT.Interactive;
+using EFT.InventoryLogic;
 using EFT.MovingPlatforms;
 using EFT.UI;
 using EFT.UI.Screens;
 using EFT.Weather;
 using JsonType;
+using Newtonsoft.Json.Linq;
+using StayInTarkov.AkiSupport.Singleplayer.Utils.InRaid;
 using StayInTarkov.Configuration;
 using StayInTarkov.Coop.Components;
 using StayInTarkov.Coop.Components.CoopGameComponents;
 using StayInTarkov.Coop.FreeCamera;
 using StayInTarkov.Coop.Matchmaker;
+using StayInTarkov.Coop.NetworkPacket.Player;
+using StayInTarkov.Coop.NetworkPacket.Raid;
+using StayInTarkov.Coop.NetworkPacket.World;
 using StayInTarkov.Coop.Players;
-using StayInTarkov.Core.Player;
+//using StayInTarkov.Core.Player;
 using StayInTarkov.Networking;
 using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Text;
 using System.Threading.Tasks;
 using UnityEngine;
+using UnityEngine.LowLevel;
+using UnityEngine.PlayerLoop;
 using UnityEngine.Profiling;
 
 namespace StayInTarkov.Coop.SITGameModes
@@ -41,8 +53,10 @@ namespace StayInTarkov.Coop.SITGameModes
     /// <summary>
     /// A custom Game Type
     /// </summary>
-    internal sealed class CoopSITGame : BaseLocalGame<GamePlayerOwner>, IBotGame, ISITGame
+    public sealed class CoopSITGame : BaseLocalGame<GamePlayerOwner>, IBotGame, ISITGame
     {
+        public string DisplayName { get; } = "Coop Game";
+
         public new bool InRaid { get { return true; } }
 
 
@@ -101,10 +115,10 @@ namespace StayInTarkov.Coop.SITGameModes
             }
         }
 
-        public DateTime GameWorldTime { get; set; }
-
 
         private static ManualLogSource Logger;
+
+        public DateTime GameWorldTime { get; set; }
 
         internal static CoopSITGame Create(
             InputTree inputTree
@@ -128,8 +142,7 @@ namespace StayInTarkov.Coop.SITGameModes
             BotsController = null;
 
             Logger = BepInEx.Logging.Logger.CreateLogSource(nameof(CoopSITGame));
-            Logger.LogDebug("CoopGame.Create");
-         
+            Logger.LogInfo("CoopGame.Create");
 
             //location.OfflineNewSpawn = false;
             //location.OfflineOldSpawn = true;
@@ -139,6 +152,7 @@ namespace StayInTarkov.Coop.SITGameModes
                 smethod_0<CoopSITGame>(inputTree, profile, backendDateTime, insurance, menuUI, commonUI, preloaderUI, gameUI, location, timeAndWeather, wavesSettings, dateTime
                 , callback, fixedDeltaTime, updateQueue, backEndSession, new TimeSpan?(sessionTime));
 
+
 #if DEBUG
             Logger.LogDebug($"DEBUG:{nameof(backendDateTime)}:{backendDateTime.ToJson()}");
 #endif
@@ -147,6 +161,7 @@ namespace StayInTarkov.Coop.SITGameModes
 
             // ---------------------------------------------------------------------------------
             // Non Waves Scenario setup
+            WildSpawnWave[] waves = FixScavWaveSettings(wavesSettings, location.waves);
             coopGame.nonWavesSpawnScenario_0 = NonWavesSpawnScenario.smethod_0(coopGame, location, coopGame.PBotsController);
             coopGame.nonWavesSpawnScenario_0.ImplementWaveSettings(wavesSettings);
 
@@ -154,7 +169,7 @@ namespace StayInTarkov.Coop.SITGameModes
             // Waves Scenario setup
             coopGame.wavesSpawnScenario_0 = WavesSpawnScenario.smethod_0(
                     coopGame.gameObject
-                    , location.waves
+                    , waves
                     , new Action<BotSpawnWave>((wave) => coopGame.PBotsController.ActivateBotsByWave(wave))
                     , location);
 
@@ -174,7 +189,7 @@ namespace StayInTarkov.Coop.SITGameModes
             // Create Coop Game Component
             Logger.LogDebug($"{nameof(Create)}:Running {nameof(coopGame.CreateCoopGameComponent)}");
             coopGame.CreateCoopGameComponent();
-            CoopGameComponent.GetCoopGameComponent().LocalGameInstance = coopGame;
+            SITGameComponent.GetCoopGameComponent().LocalGameInstance = coopGame;
 
 
 
@@ -184,13 +199,17 @@ namespace StayInTarkov.Coop.SITGameModes
             {
                 case ESITProtocol.RelayTcp:
                     coopGame.GameClient = coopGame.GetOrAddComponent<GameClientTCPRelay>();
+                   
                     break;
-                default:
+                case ESITProtocol.PeerToPeerUdp:
                     if (SITMatchmaking.IsServer)
                         coopGame.GameServer = coopGame.GetOrAddComponent<GameServerUDP>();
 
                     coopGame.GameClient = coopGame.GetOrAddComponent<GameClientUDP>();
                     break;
+                default:
+                    throw new Exception("Unknown SIT Protocol used!");
+                   
             }
 
             return coopGame;
@@ -198,11 +217,11 @@ namespace StayInTarkov.Coop.SITGameModes
 
         public void CreateCoopGameComponent()
         {
-            var coopGameComponent = CoopGameComponent.GetCoopGameComponent();
-            if (coopGameComponent != null)
-            {
-                Destroy(coopGameComponent);
-            }
+            //var coopGameComponent = SITGameComponent.GetCoopGameComponent();
+            //if (coopGameComponent != null)
+            //{
+            //    Destroy(coopGameComponent);
+            //}
 
             if (CoopPatches.CoopGameComponentParent != null)
             {
@@ -216,7 +235,7 @@ namespace StayInTarkov.Coop.SITGameModes
                 DontDestroyOnLoad(CoopPatches.CoopGameComponentParent);
             }
             CoopPatches.CoopGameComponentParent.AddComponent<ActionPacketHandlerComponent>();
-            coopGameComponent = CoopPatches.CoopGameComponentParent.AddComponent<CoopGameComponent>();
+            var coopGameComponent = CoopPatches.CoopGameComponentParent.AddComponent<SITGameComponent>();
             coopGameComponent.LocalGameInstance = this;
 
             //coopGameComponent = gameWorld.GetOrAddComponent<CoopGameComponent>();
@@ -238,15 +257,14 @@ namespace StayInTarkov.Coop.SITGameModes
 
             if (SITMatchmaking.IsServer)
             {
-                //StartCoroutine(HostPinger());
                 StartCoroutine(GameTimerSync());
                 StartCoroutine(TimeAndWeatherSync());
                 StartCoroutine(ArmoredTrainTimeSync());
             }
 
-            StartCoroutine(ClientLoadingPinger());
+            clientLoadingPingerCoroutine = StartCoroutine(ClientLoadingPinger());
 
-            var friendlyAIJson = AkiBackendCommunication.Instance.GetJson($"/coop/server/friendlyAI/{CoopGameComponent.GetServerId()}");
+            var friendlyAIJson = AkiBackendCommunication.Instance.GetJson($"/coop/server/friendlyAI/{SITGameComponent.GetServerId()}");
             Logger.LogDebug(friendlyAIJson);
             //coopGame.FriendlyAIPMCSystem = JsonConvert.DeserializeObject<FriendlyAIPMCSystem>(friendlyAIJson);
         }
@@ -261,10 +279,9 @@ namespace StayInTarkov.Coop.SITGameModes
                     yield return waitSeconds;
 
                 // Send a message of nothing to keep the Socket Alive whilst loading
-                AkiBackendCommunication.Instance.PostDownWebSocketImmediately("CLIENT_LOADING_KEEP_ALIVE");
+                AkiBackendCommunication.Instance?.PingAsync();
 
                 yield return waitSeconds;
-
             }
         }
 
@@ -289,24 +306,6 @@ namespace StayInTarkov.Coop.SITGameModes
             }
         }
 
-        private IEnumerator HostPinger()
-        {
-            var waitSeconds = new WaitForSeconds(1f);
-
-            while (true)
-            {
-                yield return waitSeconds;
-
-                if (!CoopGameComponent.TryGetCoopGameComponent(out var coopGameComponent))
-                    yield break;
-
-                Dictionary<string, string> hostPingerPacket = new();
-                hostPingerPacket.Add("HostPing", DateTime.UtcNow.Ticks.ToString());
-                hostPingerPacket.Add("serverId", coopGameComponent.ServerId);
-                Networking.GameClient.SendData(hostPingerPacket.ToJson());
-            }
-        }
-
         private IEnumerator GameTimerSync()
         {
             var waitSeconds = new WaitForSeconds(10f);
@@ -315,18 +314,21 @@ namespace StayInTarkov.Coop.SITGameModes
             {
                 yield return waitSeconds;
 
-                if (!CoopGameComponent.TryGetCoopGameComponent(out var coopGameComponent))
+                if (!SITGameComponent.TryGetCoopGameComponent(out var coopGameComponent))
                     yield break;
 
                 if (GameTimer.StartDateTime.HasValue && GameTimer.SessionTime.HasValue)
                 {
-                    Dictionary<string, object> raidTimerDict = new()
-                    {
-                        { "serverId", coopGameComponent.ServerId },
-                        { "m", "RaidTimer" },
-                        { "sessionTime", (GameTimer.SessionTime - GameTimer.PastTime).Value.Ticks },
-                    };
-                    Networking.GameClient.SendData(raidTimerDict.ToJson());
+                    //Dictionary<string, object> raidTimerDict = new()
+                    //{
+                    //    { "serverId", coopGameComponent.ServerId },
+                    //    { "m", "RaidTimer" },
+                    //    { "sessionTime", (GameTimer.SessionTime - GameTimer.PastTime).Value.Ticks },
+                    //};
+                    //Networking.GameClient.SendData(raidTimerDict.ToJson());
+                    RaidTimerPacket packet = new RaidTimerPacket();
+                    packet.SessionTime = (GameTimer.SessionTime - GameTimer.PastTime).Value.Ticks;
+                    Networking.GameClient.SendData(packet.Serialize());
                 }
             }
         }
@@ -339,7 +341,7 @@ namespace StayInTarkov.Coop.SITGameModes
             {
                 yield return waitSeconds;
 
-                if (!CoopGameComponent.TryGetCoopGameComponent(out var coopGameComponent))
+                if (!SITGameComponent.TryGetCoopGameComponent(out var coopGameComponent))
                     yield break;
 
                 Dictionary<string, object> timeAndWeatherDict = new()
@@ -385,7 +387,7 @@ namespace StayInTarkov.Coop.SITGameModes
             {
                 yield return waitSeconds;
 
-                if (!CoopGameComponent.TryGetCoopGameComponent(out var coopGameComponent))
+                if (!SITGameComponent.TryGetCoopGameComponent(out var coopGameComponent))
                     yield break;
 
                 // Make sure packet is only sent after the raid begins.
@@ -410,7 +412,49 @@ namespace StayInTarkov.Coop.SITGameModes
             }
         }
 
-        private static int[] CultistSpawnTime = new [] { 6, 22 }; 
+
+        public static WildSpawnWave[] FixScavWaveSettings(WavesSettings wavesSettings, WildSpawnWave[] waves)
+        {
+            Logger.LogDebug($"{nameof(CoopSITGame)}:{nameof(FixScavWaveSettings)}");
+
+            foreach (WildSpawnWave wildSpawnWave in waves)
+            {
+                wildSpawnWave.slots_min = wavesSettings.BotAmount == EBotAmount.NoBots ? 0 : 1;
+                wildSpawnWave.slots_max = wavesSettings.BotAmount == EBotAmount.NoBots ? 0 : Math.Max(1, wildSpawnWave.slots_max);
+                if (wavesSettings.IsTaggedAndCursed && wildSpawnWave.WildSpawnType == WildSpawnType.assault)
+                {
+                    wildSpawnWave.WildSpawnType = WildSpawnType.cursedAssault;
+                }
+                if (wavesSettings.IsBosses)
+                {
+                    wildSpawnWave.time_min += 5;
+                    wildSpawnWave.time_max += 27;
+                }
+                wildSpawnWave.BotDifficulty = ToBotDifficulty(wavesSettings.BotDifficulty);
+            }
+            return waves;
+        }
+
+        public static BotDifficulty ToBotDifficulty(EBotDifficulty botDifficulty)
+        {
+            return botDifficulty switch
+            {
+                EBotDifficulty.Easy => BotDifficulty.easy,
+                EBotDifficulty.Medium => BotDifficulty.normal,
+                EBotDifficulty.Hard => BotDifficulty.hard,
+                EBotDifficulty.Impossible => BotDifficulty.impossible,
+                EBotDifficulty.Random => SelectRandomBotDifficulty(),
+                _ => BotDifficulty.normal,
+            };
+        }
+
+        public static BotDifficulty SelectRandomBotDifficulty()
+        {
+            Array values = Enum.GetValues(typeof(BotDifficulty));
+            return (BotDifficulty)values.GetValue(UnityEngine.Random.Range(0, values.Length));
+        }
+
+        private static int[] CultistSpawnTime = new[] { 6, 22 };
 
         private static bool CanSpawnCultist(int hour)
         {
@@ -419,6 +463,10 @@ namespace StayInTarkov.Coop.SITGameModes
 
         public BossLocationSpawn[] FixBossWaveSettings(WavesSettings wavesSettings, LocationSettingsClass.Location location)
         {
+#if DEBUG
+            Logger.LogDebug($"{nameof(FixBossWaveSettings)}:{location.ToJson()}");
+#endif
+
             var bossLocationSpawns = location.BossLocationSpawn;
             if (!wavesSettings.IsBosses)
             {
@@ -443,9 +491,6 @@ namespace StayInTarkov.Coop.SITGameModes
                     continue;
                 }
                 float bossChance = bossLocationSpawn.BossChance;
-#if DEBUG
-                bossChance = 100f;
-#endif
                 if (CanSpawnCultist(GameWorldTime.Hour) && (bossLocationSpawn.BossType == WildSpawnType.sectantPriest || bossLocationSpawn.BossType == WildSpawnType.sectantWarrior))
                 {
                     Logger.LogDebug($"Block spawn of Sectant (Cultist) in day time in hour {GameWorldTime.Hour}!");
@@ -453,13 +498,13 @@ namespace StayInTarkov.Coop.SITGameModes
                 }
                 bossLocationSpawn.BossChance = bossChance;
                 bossLocationSpawn.BossEscortAmount = sourceEscortAmount != null ? sourceEscortAmount.Max((int x) => x).ToString() : "1";
-                if(bossLocationSpawn.Supports == null && !string.IsNullOrEmpty(bossLocationSpawn.BossEscortType))
+                if (bossLocationSpawn.Supports == null && !string.IsNullOrEmpty(bossLocationSpawn.BossEscortType) && !bossLocationSpawn.BossName.Equals("bossTagilla"))
                 {
                     Logger.LogDebug($"bossLocationSpawn.Supports is Null. Attempt to create them.");
 
                     bossLocationSpawn.Supports = new WildSpawnSupports[1];
                     bossLocationSpawn.Supports[0] = new WildSpawnSupports();
-                    bossLocationSpawn.Supports[0].BossEscortDifficult = new [] { "normal" };
+                    bossLocationSpawn.Supports[0].BossEscortDifficult = new[] { "normal" };
                     bossLocationSpawn.Supports[0].BossEscortAmount = 3;
                     if (Enum.TryParse<WildSpawnType>(bossLocationSpawn.BossEscortType, out var t))
                         bossLocationSpawn.Supports[0].BossEscortType = t;
@@ -562,9 +607,9 @@ namespace StayInTarkov.Coop.SITGameModes
                     }
                 }
 
-                if (!CoopGameComponent.TryGetCoopGameComponent(out var coopGameComponent))
+                if (!SITGameComponent.TryGetCoopGameComponent(out var coopGameComponent))
                 {
-                    Logger.LogDebug($"{nameof(CreatePhysicalBot)}:Unable to find {nameof(CoopGameComponent)}");
+                    Logger.LogDebug($"{nameof(CreatePhysicalBot)}:Unable to find {nameof(SITGameComponent)}");
                     await Task.Delay(5000);
                 }
 
@@ -573,7 +618,7 @@ namespace StayInTarkov.Coop.SITGameModes
                 coopGameComponent.Players.TryAdd(profile.Id, (CoopPlayer)botPlayer);
                 coopGameComponent.ProfileIdsAI.Add(profile.Id);
 
-                SendPlayerDataToServer(botPlayer);
+                SendPlayerDataToServer(botPlayer, position, true);
 
             }
             return botPlayer;
@@ -615,7 +660,7 @@ namespace StayInTarkov.Coop.SITGameModes
                     },
                     {
                         "serverId",
-                        CoopGameComponent.GetServerId()
+                        SITGameComponent.GetServerId()
                     },
                     {
                         "x",
@@ -643,7 +688,7 @@ namespace StayInTarkov.Coop.SITGameModes
             {
                 if (PluginConfigSettings.Instance.CoopSettings.AllPlayersSpawnTogether)
                 {
-                    var json = AkiBackendCommunication.Instance.GetJson($"/coop/server/spawnPoint/{CoopGameComponent.GetServerId()}");
+                    var json = AkiBackendCommunication.Instance.GetJson($"/coop/server/spawnPoint/{SITGameComponent.GetServerId()}");
                     Logger.LogInfo("Retreived Spawn Point " + json);
                     var retrievedPacket = json.ParseJsonTo<Dictionary<string, string>>();
                     var x = float.Parse(retrievedPacket["x"].ToString());
@@ -684,6 +729,21 @@ namespace StayInTarkov.Coop.SITGameModes
         /// 
         public override async Task<LocalPlayer> vmethod_2(int playerId, Vector3 position, Quaternion rotation, string layerName, string prefix, EPointOfView pointOfView, Profile profile, bool aiControl, EUpdateQueue updateQueue, EFT.Player.EUpdateMode armsUpdateMode, EFT.Player.EUpdateMode bodyUpdateMode, CharacterControllerSpawner.Mode characterControllerMode, Func<float> getSensitivity, Func<float> getAimingSensitivity, IStatisticsManager statisticsManager, AbstractQuestControllerClass questController, AbstractAchievementControllerClass achievementsController)
         {
+            // Send Connect Command to Relay
+            switch(SITMatchmaking.SITProtocol)
+            {
+                case ESITProtocol.RelayTcp:
+                    JObject j = new JObject();
+                    j.Add("serverId", SITGameComponent.GetServerId());
+                    j.Add("profileId", profile.ProfileId);
+                    j.Add("connect", true);
+                    Logger.LogDebug("Sending Connect to Relay");
+                    GameClient.SendData(Encoding.UTF8.GetBytes(j.ToString()));
+                    break;
+            }
+           
+
+
             spawnPoints = SpawnPoints.CreateFromScene(DateTime.Now, Location_0.SpawnPointParams);
             int spawnSafeDistance = Location_0.SpawnSafeDistanceMeters > 0 ? Location_0.SpawnSafeDistanceMeters : 100;
             SpawnSystemSettings settings = new(Location_0.MinDistToFreePoint, Location_0.MaxDistToFreePoint, Location_0.MaxBotPerZone, spawnSafeDistance);
@@ -722,9 +782,9 @@ namespace StayInTarkov.Coop.SITGameModes
                , isYourPlayer: true);
             // Inventory is FIR if Scav
             profile.SetSpawnedInSession(value: profile.Side == EPlayerSide.Savage);
-            if (!CoopGameComponent.TryGetCoopGameComponent(out var coopGameComponent))
+            if (!SITGameComponent.TryGetCoopGameComponent(out var coopGameComponent))
             {
-                Logger.LogDebug($"{nameof(vmethod_2)}:Unable to find {nameof(CoopGameComponent)}");
+                Logger.LogDebug($"{nameof(vmethod_2)}:Unable to find {nameof(SITGameComponent)}");
                 await Task.Delay(5000);
             }
             coopGameComponent.Players.TryAdd(profile.Id, (CoopPlayer)myPlayer);
@@ -732,65 +792,13 @@ namespace StayInTarkov.Coop.SITGameModes
 
             // Set Group Id for host
             myPlayer.Profile.Info.GroupId = "SIT";
-
-            SendPlayerDataToServer(myPlayer);
+            myPlayer.Transform.position = spawnPoint.Position;
+            SendPlayerDataToServer(myPlayer, spawnPoint.Position, false);
 
             //SendOrReceiveSpawnPoint(myPlayer);
 
-            // ---------------------------------------------
-            // Here we can wait for other players, if desired
-            TimeSpan waitTimeout = TimeSpan.FromSeconds(PluginConfigSettings.Instance.CoopSettings.WaitingTimeBeforeStart);
 
-            await Task.Run(async () =>
-            {
-                if (coopGameComponent != null)
-                {
-                    System.Diagnostics.Stopwatch stopwatch = System.Diagnostics.Stopwatch.StartNew(); // Start the stopwatch immediately.
-
-                    while (coopGameComponent.PlayerUsers == null)
-                    {
-                        Logger.LogDebug($"{nameof(vmethod_2)}: {nameof(coopGameComponent.PlayerUsers)} is null");
-                        await Task.Delay(1000);
-                    }
-
-                    do
-                    {
-    
-                        if (coopGameComponent.PlayerUsers == null || coopGameComponent.PlayerUsers.Count() == 0)
-                        {
-                            Logger.LogDebug($"{nameof(vmethod_2)}: PlayerUsers is null or empty");
-                            await Task.Delay(1000);
-                            continue;
-                        }
-
-                        var progress = coopGameComponent.PlayerUsers.Count() / SITMatchmaking.HostExpectedNumberOfPlayers;
-                        var numbersOfPlayersToWaitFor = SITMatchmaking.HostExpectedNumberOfPlayers - coopGameComponent.PlayerUsers.Count();
-
-                        if (SITMatchmaking.TimeHasComeScreenController != null)
-                        {
-                            SITMatchmaking.TimeHasComeScreenController.ChangeStatus(string.Format(StayInTarkovPlugin.LanguageDictionary["WAITING_PLAYER"].ToString(), numbersOfPlayersToWaitFor), progress);
-                        }
-
-                        if (coopGameComponent.PlayerUsers.Count() >= SITMatchmaking.HostExpectedNumberOfPlayers)
-                        {
-                            Logger.LogInfo("Desired number of players reached. Starting the game.");
-                            break;
-                        }
-
-                        if (stopwatch.Elapsed >= waitTimeout)
-                        {
-                            Logger.LogInfo("Timeout reached. Proceeding with current players.");
-                            break;
-                        }
-
-                        await Task.Delay(1000);
-
-                    } while (true);
-
-                    stopwatch.Stop();
-                }
-            });
-
+            //WaitForPlayers
 
 
             // ---------------------------------------------
@@ -801,62 +809,214 @@ namespace StayInTarkov.Coop.SITGameModes
             //return base.vmethod_2(playerId, position, rotation, layerName, prefix, pointOfView, profile, aiControl, updateQueue, armsUpdateMode, bodyUpdateMode, characterControllerMode, getSensitivity, getAimingSensitivity, statisticsManager, questController);
         }
 
-        public static async void SendPlayerDataToServer(LocalPlayer player)
+        private async Task WaitForPlayersToSpawn()
         {
-            Logger.LogDebug($"{nameof(SendPlayerDataToServer)}");
-            var profileJson = player.Profile.SITToJson();
-
-
-
-            Dictionary<string, object> packet = new()
+            if (SITMatchmaking.TimeHasComeScreenController != null)
             {
-                        {
-                            "serverId",
-                            SITMatchmaking.GetGroupId()
-                        },
-                        {
-                        "isAI",
-                            //player.IsAI && player.AIData != null && player.AIData.IsAI && !player.IsYourPlayer
-                            !player.IsYourPlayer && (player as CoopPlayerClient == null)
-                        },
-                        {
-                            "profileId",
-                            player.ProfileId
-                        },
-                        {
-                            "groupId",
-                            SITMatchmaking.GetGroupId()
-                        },
-                        {
-                            "sPx",
-                            player.Transform.position.x
-                        },
-                        {
-                            "sPy",
-                            player.Transform.position.y
-                        },
-                        {
-                            "sPz",
-                            player.Transform.position.z
-                        },
-                        {
-                            "profileJson",
-                            profileJson
-                        },
-                        { "m", "PlayerSpawn" },
-                    };
+                SITMatchmaking.TimeHasComeScreenController.ChangeStatus($"Session Started. Waiting for Player(s)");
+                await Task.Delay(1000);
+            }
+
+            if (!SITGameComponent.TryGetCoopGameComponent(out var coopGameComponent))
+            {
+                Logger.LogDebug($"{nameof(vmethod_2)}:Unable to find {nameof(SITGameComponent)}");
+                await Task.Delay(5000);
+            }
+
+            // ---------------------------------------------
+            // Here we can wait for other players, if desired
+            TimeSpan waitTimeout = TimeSpan.FromSeconds(PluginConfigSettings.Instance.CoopSettings.WaitingTimeBeforeStart);
+
+            //await Task.Run(async () =>
+            //{
+            if (coopGameComponent != null)
+            {
+                System.Diagnostics.Stopwatch stopwatch = System.Diagnostics.Stopwatch.StartNew(); // Start the stopwatch immediately.
+
+                while (coopGameComponent.PlayerUsers == null)
+                {
+                    Logger.LogDebug($"{nameof(vmethod_2)}: {nameof(coopGameComponent.PlayerUsers)} is null");
+                    await Task.Delay(1000);
+                }
+
+                do
+                {
+
+                    await Task.Delay(1000);
+
+                    if (coopGameComponent.PlayerUsers == null || coopGameComponent.PlayerUsers.Count() == 0)
+                    {
+                        Logger.LogDebug($"{nameof(vmethod_2)}: PlayerUsers is null or empty");
+                        await Task.Delay(1000);
+                        continue;
+                    }
+
+                    //await Task.Run(() =>
+                    //{
+                    // Ensure this is a distinct list of Ids
+                    //var distinctExistingProfileIds = playerList.Distinct().ToArray();
+                    SendRequestSpawnPlayersPacket();
+                    //});
+
+                    var numbersOfPlayersToWaitFor = SITMatchmaking.HostExpectedNumberOfPlayers - coopGameComponent.PlayerUsers.Count();
+
+                    if (SITMatchmaking.TimeHasComeScreenController != null)
+                    {
+                        SITMatchmaking.TimeHasComeScreenController.ChangeStatus(string.Format(StayInTarkovPlugin.LanguageDictionary["WAITING_FOR_PLAYERS_TO_SPAWN"].ToString(), numbersOfPlayersToWaitFor));
+                    }
+
+                    if (coopGameComponent.PlayerUsers.Count() >= SITMatchmaking.HostExpectedNumberOfPlayers)
+                    {
+                        Logger.LogInfo("Desired number of players reached. Starting the game.");
+                        break;
+                    }
+
+                    if (stopwatch.Elapsed >= waitTimeout)
+                    {
+                        Logger.LogInfo("Timeout reached. Proceeding with current players.");
+                        break;
+                    }
+
+                } while (true);
+
+                stopwatch.Stop();
+            }
+            //});
+
+            ReadyToStartGamePacket packet = new ReadyToStartGamePacket(SITMatchmaking.Profile.ProfileId);
+            GameClient.SendData(packet.Serialize());
+        }
+
+        private async Task WaitForPlayersToBeReady()
+        {
+            if (SITMatchmaking.TimeHasComeScreenController != null)
+            {
+                SITMatchmaking.TimeHasComeScreenController.ChangeStatus($"Players spawned. Waiting for Player(s) to be Ready.");
+                await Task.Delay(1000);
+            }
+
+            if (!SITGameComponent.TryGetCoopGameComponent(out var coopGameComponent))
+            {
+                Logger.LogDebug($"{nameof(vmethod_2)}:Unable to find {nameof(SITGameComponent)}");
+                await Task.Delay(5000);
+            }
+
+            // ---------------------------------------------
+            // Here we can wait for other players, if desired
+            TimeSpan waitTimeout = TimeSpan.FromSeconds(PluginConfigSettings.Instance.CoopSettings.WaitingTimeBeforeStart);
+
+            //await Task.Run(async () =>
+            //{
+            if (coopGameComponent != null)
+            {
+                System.Diagnostics.Stopwatch stopwatch = System.Diagnostics.Stopwatch.StartNew(); // Start the stopwatch immediately.
+
+               
+
+                do
+                {
+
+                    await Task.Delay(1000);
+
+                    var numbersOfPlayersToWaitFor = SITMatchmaking.HostExpectedNumberOfPlayers - ReadyPlayers;
+
+                    if (SITMatchmaking.TimeHasComeScreenController != null)
+                    {
+                        SITMatchmaking.TimeHasComeScreenController.ChangeStatus(string.Format(StayInTarkovPlugin.LanguageDictionary["WAITING_FOR_PLAYERS_TO_BE_READY"].ToString(), numbersOfPlayersToWaitFor));
+                    }
+
+                    if (ReadyPlayers >= SITMatchmaking.HostExpectedNumberOfPlayers)
+                    {
+                        Logger.LogInfo("Desired number of players reached. Starting the game.");
+                        break;
+                    }
+
+                    if (stopwatch.Elapsed >= waitTimeout)
+                    {
+                        Logger.LogInfo("Timeout reached. Proceeding with current players.");
+                        break;
+                    }
+
+                } while (true);
+
+                stopwatch.Stop();
+            }
+            //});
+
+            if (!SITMatchmaking.IsClient)
+            {
+                HostStartingGamePacket packet = new HostStartingGamePacket();
+                GameClient.SendData(packet.Serialize());
+            }
+        }
+
+        private async Task WaitForHostToStart()
+        {
+            if (SITMatchmaking.TimeHasComeScreenController != null)
+            {
+                SITMatchmaking.TimeHasComeScreenController.ChangeStatus($"Players spawned and ready. Waiting for Host to start.");
+                await Task.Delay(1000);
+            }
+
+            if (!SITGameComponent.TryGetCoopGameComponent(out var coopGameComponent))
+            {
+                Logger.LogDebug($"{nameof(vmethod_2)}:Unable to find {nameof(SITGameComponent)}");
+                await Task.Delay(5000);
+            }
+
+            // ---------------------------------------------
+            // Here we can wait for other players, if desired
+            TimeSpan waitTimeout = TimeSpan.FromSeconds(PluginConfigSettings.Instance.CoopSettings.WaitingTimeBeforeStart);
+
+            if (coopGameComponent != null)
+            {
+                System.Diagnostics.Stopwatch stopwatch = System.Diagnostics.Stopwatch.StartNew(); // Start the stopwatch immediately.
 
 
-            //Logger.LogDebug(packet.ToJson());
 
-            var prc = player.GetOrAddComponent<PlayerReplicatedComponent>();
-            prc.player = player;
-            //AkiBackendCommunicationCoop.PostLocalPlayerData(player, packet);
+                do
+                {
 
-            // ------------------------------------------------------------------------------------
-            // Send the information to the server
-            Logger.LogDebug($"{nameof(SendPlayerDataToServer)}:PostJsonAsync");
-            await AkiBackendCommunication.Instance.PostJsonAsync("/coop/server/update", packet.SITToJson());
+                    await Task.Delay(1000);
+
+                    if (SITMatchmaking.TimeHasComeScreenController != null)
+                    {
+                        SITMatchmaking.TimeHasComeScreenController.ChangeStatus(StayInTarkovPlugin.LanguageDictionary["WAITING_FOR_HOST_TO_BE_READY"].ToString());
+                    }
+
+                    if (HostReady)
+                        break;
+
+                    if (stopwatch.Elapsed >= waitTimeout)
+                    {
+                        Logger.LogInfo("Timeout reached. Proceeding with current players.");
+                        break;
+                    }
+
+                } while (true);
+
+                stopwatch.Stop();
+            }
+        }
+
+        private void SendRequestSpawnPlayersPacket()
+        {
+            RequestSpawnPlayersPacket requestSpawnPlayersPacket = new RequestSpawnPlayersPacket([Singleton<GameWorld>.Instance.MainPlayer.ProfileId]);
+            GameClient.SendData(requestSpawnPlayersPacket.Serialize());
+        }
+
+        public static void SendPlayerDataToServer(LocalPlayer player, Vector3 position, bool isAI)
+        {
+#if DEBUG
+            Logger.LogDebug($"{nameof(SendPlayerDataToServer)}");
+#endif
+
+            // Sends out to all clients that this Character has spawned
+            var infoPacket = SpawnPlayersPacket.CreateInformationPacketFromPlayer(player);
+            infoPacket.BodyPosition = position;
+            infoPacket.IsAI = isAI;
+            var spawnPlayersPacket = new SpawnPlayersPacket([infoPacket]);
+            Networking.GameClient.SendData(spawnPlayersPacket.Serialize());
         }
 
         /// <summary>
@@ -1001,7 +1161,7 @@ namespace StayInTarkov.Coop.SITGameModes
             Logger.LogInfo("vmethod_4.SessionRun");
 
             // No longer need this ping. Load complete and all other data should keep happening after this point.
-            StopCoroutine(ClientLoadingPinger());
+            StopCoroutine(clientLoadingPingerCoroutine);
             //GCHelpers.ClearGarbage(emptyTheSet: true, unloadAssets: false);
 
             var magazines = Profile_0.Inventory.AllRealPlayerItems.OfType<MagazineClass>().ToList();
@@ -1072,7 +1232,7 @@ namespace StayInTarkov.Coop.SITGameModes
 
                 //Logger.LogDebug(InfiltrationPoint);
 
-                ExfiltrationControllerClass.Instance.InitAllExfiltrationPoints(Location_0.exits, justLoadSettings: false, "");
+                ExfiltrationControllerClass.Instance.InitAllExfiltrationPoints(Location_0.exits, justLoadSettings: SITMatchmaking.IsClient, "");
                 ExfiltrationPoint[] exfilPoints = ExfiltrationControllerClass.Instance.EligiblePoints(Profile_0);
                 GameUi.TimerPanel.SetTime(DateTime.UtcNow, Profile_0.Info.Side, GameTimer.SessionSeconds(), exfilPoints);
                 foreach (ExfiltrationPoint exfiltrationPoint in exfilPoints)
@@ -1083,7 +1243,7 @@ namespace StayInTarkov.Coop.SITGameModes
                     UpdateExfiltrationUi(exfiltrationPoint, contains: false, initial: true);
                 }
 
-                // Paulov: You don't want this to run on Coop Game's
+                // Paulov: You don't want this to run on Coop Game's as the raid will end when the host extracts
                 //try
                 //{
                 //    EndByExitTrigerScenario.Run();
@@ -1096,6 +1256,8 @@ namespace StayInTarkov.Coop.SITGameModes
 
                 dateTime_0 = DateTime.Now;
                 Status = GameStatus.Started;
+
+                ConsoleScreen.Processor.RegisterCommandGroup<StayInTarkov.UI.ConsoleCommands>();
                 ConsoleScreen.ApplyStartCommands();
             }
             catch (Exception ex)
@@ -1105,6 +1267,7 @@ namespace StayInTarkov.Coop.SITGameModes
             }
         }
 
+        public List<ExfiltrationPoint> EnabledCountdownExfils { get; private set; } = new();
         public Dictionary<string, (float, long, string)> ExtractingPlayers { get; } = new();
         public List<string> ExtractedPlayers { get; } = new();
 
@@ -1113,13 +1276,24 @@ namespace StayInTarkov.Coop.SITGameModes
             if (!player.IsYourPlayer)
                 return;
 
-            Logger.LogDebug("ExfiltrationPoint_OnCancelExtraction");
-            Logger.LogDebug(point.Status);
-
+            Logger.LogDebug($"{nameof(ExfiltrationPoint_OnCancelExtraction)} {point.Settings.Name} {point.Status}");
             ExtractingPlayers.Remove(player.ProfileId);
 
+
+            BackendConfigSettingsClass.BackendConfigSettingsClassExperience.BackendConfigSettingsClassMatchEnd matchEnd = Singleton<BackendConfigSettingsClass>.Instance.Experience.MatchEnd;
+
+
+            if (Profile_0.EftStats.SessionCounters.GetAllInt(new object[] { CounterTag.Exp }) > matchEnd.SurvivedExpRequirement ||
+                RaidTimeUtil.GetElapsedRaidSeconds() > matchEnd.SurvivedTimeRequirement)
+            {
+                MyExitStatus = (player.HealthController.IsAlive ? ExitStatus.MissingInAction : ExitStatus.Killed);
+            }
+            else
+            {
+                MyExitStatus = ExitStatus.Runner;
+            }
+
             MyExitLocation = null;
-            //player.SwitchRenderer(true);
         }
 
         private void ExfiltrationPoint_OnStartExtraction(ExfiltrationPoint point, EFT.Player player)
@@ -1127,52 +1301,61 @@ namespace StayInTarkov.Coop.SITGameModes
             if (!player.IsYourPlayer)
                 return;
 
-            Logger.LogDebug("ExfiltrationPoint_OnStartExtraction");
-            Logger.LogDebug(point.Settings.Name);
-            Logger.LogDebug(point.Status);
-            //Logger.LogInfo(point.ExfiltrationStartTime);
-            Logger.LogDebug(point.Settings.ExfiltrationTime);
+            Logger.LogDebug($"{nameof(ExfiltrationPoint_OnStartExtraction)} {point.Settings.Name} {point.Status} {point.Settings.ExfiltrationTime}");
             bool playerHasMetRequirements = !point.UnmetRequirements(player).Any();
-            //if (playerHasMetRequirements && !ExtractingPlayers.ContainsKey(player.ProfileId) && !ExtractedPlayers.Contains(player.ProfileId))
             if (!ExtractingPlayers.ContainsKey(player.ProfileId) && !ExtractedPlayers.Contains(player.ProfileId))
             {
                 ExtractingPlayers.Add(player.ProfileId, (point.Settings.ExfiltrationTime, DateTime.Now.Ticks, point.Settings.Name));
                 Logger.LogDebug($"Added {player.ProfileId} to {nameof(ExtractingPlayers)}");
             }
-            //player.SwitchRenderer(false);
 
             MyExitLocation = point.Settings.Name;
-
-
+            MyExitStatus = ExitStatus.Survived;
         }
 
         private void ExfiltrationPoint_OnStatusChanged(ExfiltrationPoint point, EExfiltrationStatus prevStatus)
         {
             UpdateExfiltrationUi(point, point.Entered.Any((x) => x.ProfileId == Profile_0.Id));
-            Logger.LogDebug("ExfiltrationPoint_OnStatusChanged");
             EExfiltrationStatus curStatus = point.Status;
-            Logger.LogDebug($"{nameof(prevStatus)}:{prevStatus}.{nameof(curStatus)}:{curStatus}");
+            Logger.LogDebug($"{nameof(ExfiltrationPoint_OnStatusChanged)} {nameof(prevStatus)}={prevStatus} {nameof(curStatus)}={curStatus}");
 
-            // Fixes player cannot extract with The Lab elevator and Armored Train
-            if (prevStatus == EExfiltrationStatus.AwaitsManualActivation && curStatus == EExfiltrationStatus.Countdown)
-                point.ExternalSetStatus(EExfiltrationStatus.RegularMode);
-
-            // Fixes player cannot extract with Car on Ground Zero
-            if (prevStatus == EExfiltrationStatus.UncompleteRequirements && curStatus == EExfiltrationStatus.Countdown)
+            // Manage countdown exfils
+            var countingDown = EnabledCountdownExfils.Contains(point);
+            if (!countingDown && point.Status == EExfiltrationStatus.Countdown)
             {
-                foreach (var player in point.Entered)
+                if (point.ExfiltrationStartTime <= 0f)
                 {
-                    if (!ExtractingPlayers.ContainsKey(player.ProfileId) && !ExtractedPlayers.Contains(player.ProfileId))
-                    {
-                        ExtractingPlayers.Add(player.ProfileId, (point.Settings.ExfiltrationTime, DateTime.Now.Ticks, point.Settings.Name));
-                        Logger.LogDebug($"Added {player.ProfileId} to {nameof(ExtractingPlayers)}");
-                    }
+                    point.ExfiltrationStartTime = this.PastTime;
                 }
-                point.ExternalSetStatus(EExfiltrationStatus.RegularMode);
+                EnabledCountdownExfils.Add(point);
+            }
+            else if (countingDown && point.Status != EExfiltrationStatus.Countdown)
+            {
+                point.ExfiltrationStartTime = -float.Epsilon;
+                EnabledCountdownExfils.Remove(point);
+            }
+
+            // Paulov: Had to add this. Without a SITGameComponent, the ServerId is null when sending data. Therefore a Raid could fail and blank screen.
+            if (SITGameComponent.TryGetCoopGameComponent(out var coopGameComponent))
+            {
+                // Propagate exfil point state to all players (useful for Countdown exfils, like car)
+                // We do not propagate NotPresent because clients are responsible to trigger their local exfils.
+                // A race condition would cause NotPresent to be received before clients can properly process the exfil logic
+                // because EFT's code clears ExfiltrationPoint.Entered upon setting NotPresent
+                if (prevStatus != curStatus && curStatus != EExfiltrationStatus.NotPresent && curStatus != EExfiltrationStatus.UncompleteRequirements)
+                {
+                    UpdateExfiltrationPointPacket packet = new()
+                    {
+                        PointName = point.Settings.Name,
+                        Command = curStatus,
+                        QueuedPlayers = point.QueuedPlayers
+                    };
+                    GameClient.SendData(packet.Serialize());
+                }
             }
         }
 
-        public ExitStatus MyExitStatus { get; set; } = ExitStatus.Survived;
+        public ExitStatus MyExitStatus { get; set; } = ExitStatus.MissingInAction;
         public string MyExitLocation { get; set; } = null;
         public ISpawnSystem SpawnSystem { get; set; }
         public int MaxBotCount { get; private set; }
@@ -1204,13 +1387,13 @@ namespace StayInTarkov.Coop.SITGameModes
             // If I am the Host/Server, then ensure all the bots have left too
             if (SITMatchmaking.IsServer)
             {
-                foreach (var p in CoopGameComponent.GetCoopGameComponent().Players)
+                foreach (var p in SITGameComponent.GetCoopGameComponent().Players)
                 {
                     AkiBackendCommunication.Instance.PostJson("/coop/server/update", new Dictionary<string, object>() {
 
                             { "m", "PlayerLeft" },
                             { "profileId", p.Value.ProfileId },
-                            { "serverId", CoopGameComponent.GetServerId() }
+                            { "serverId", SITGameComponent.GetServerId() }
 
                         }.ToJson());
                 }
@@ -1220,12 +1403,9 @@ namespace StayInTarkov.Coop.SITGameModes
             AkiBackendCommunication.Instance.PostJson("/coop/server/update", new Dictionary<string, object>() {
                 { "m", "PlayerLeft" },
                 { "profileId", Singleton<GameWorld>.Instance.MainPlayer.ProfileId },
-                { "serverId", CoopGameComponent.GetServerId() }
+                { "serverId", SITGameComponent.GetServerId() }
 
             }.ToJson());
-
-            
-
 
             if (BossWaveManager != null)
                 BossWaveManager.Stop();
@@ -1254,20 +1434,11 @@ namespace StayInTarkov.Coop.SITGameModes
             base.GameTimer.TryStop();
             EndByExitTrigerScenario.Stop();
             GameUi.TimerPanel.Close();
-
-            try
+            if (!SITMatchmaking.IsClient)
             {
-                if (!SITMatchmaking.IsClient)
-                {
-                    botsController_0.Stop();
-                    botsController_0.DestroyInfo(gparam_0.Player);
-                }
+                botsController_0.Stop();
+                botsController_0.DestroyInfo(gparam_0.Player);
             }
-            catch (Exception)
-            {
-
-            }
-
             if (EnvironmentManager.Instance != null)
             {
                 EnvironmentManager.Instance.Stop();
@@ -1295,19 +1466,64 @@ namespace StayInTarkov.Coop.SITGameModes
             // end of BaseLocalGame Stop method
             // -----------------------------------------------------------------------------------------------
 
-            CoopPatches.LeftGameDestroyEverything();
+            //CoopPatches.LeftGameDestroyEverything();
         }
+
+        //public new void Update()
+        //{
+        //    UpdateByUnity?.Invoke();    
+        //}
 
         public override void CleanUp()
         {
+            foreach (EFT.Player value in Bots.Values)
+            {
+                try
+                {
+                    value.Dispose();
+                    AssetPoolObject.ReturnToPool(value.gameObject);
+                }
+                catch (Exception exception)
+                {
+                    UnityEngine.Debug.LogException(exception);
+                }
+            }
+            Bots.Clear();
+
+            if (SITGameComponent.TryGetCoopGameComponent(out var gameComponent))
+            {
+                if (gameComponent.PlayerClients != null)
+                {
+                    foreach (EFT.Player value in gameComponent.PlayerClients)
+                    {
+                        try
+                        {
+                            value.Dispose();
+                            AssetPoolObject.ReturnToPool(value.gameObject);
+                        }
+                        catch (Exception exception)
+                        {
+                            UnityEngine.Debug.LogException(exception);
+                        }
+                    }
+                    gameComponent.PlayerClients.Clear();
+                }
+            }
+
             base.CleanUp();
-            smethod_4(Bots);
         }
 
         public override void Dispose()
         {
             Logger.LogDebug("CoopGame:Dispose()");
             StartCoroutine(DisposingCo());
+
+            foreach (ExfiltrationPoint exfiltrationPoint in ExfiltrationControllerClass.Instance.EligiblePoints(Profile_0)) {
+                exfiltrationPoint.OnStartExtraction -= ExfiltrationPoint_OnStartExtraction;
+                exfiltrationPoint.OnCancelExtraction -= ExfiltrationPoint_OnCancelExtraction;
+                exfiltrationPoint.OnStatusChanged -= ExfiltrationPoint_OnStatusChanged;
+            }
+
             base.Dispose();
         }
 
@@ -1324,16 +1540,142 @@ namespace StayInTarkov.Coop.SITGameModes
         private WavesSpawnScenario wavesSpawnScenario_0;
 
         public BossLocationSpawn[] BossWaves { get; private set; }
+        public int ReadyPlayers { get; set; }
+        public bool HostReady { get; set; }
 
         private NonWavesSpawnScenario nonWavesSpawnScenario_0;
 
         private Func<EFT.Player, GamePlayerOwner> func_1;
-
+        private Coroutine clientLoadingPingerCoroutine;
 
         public new void method_6(string backendUrl, string locationId, int variantId)
         {
             Logger.LogInfo("CoopGame:method_6");
             return;
+        }
+
+        public async Task Run(BotControllerSettings botsSettings, string backendUrl, InventoryControllerClass inventoryController, Callback runCallback)
+        {
+            Logger.LogDebug(nameof(Run));
+
+            base.Status = GameStatus.Running;
+            UnityEngine.Random.InitState((int)DateTime.UtcNow.Ticks);
+            LocationSettingsClass.Location location;
+            if (Location_0.IsHideout)
+            {
+                location = Location_0;
+            }
+            else
+            {
+                using (TokenStarter.StartWithToken("LoadLocation"))
+                {
+                    int variantId = UnityEngine.Random.Range(1, 6);
+                    method_6(backendUrl, Location_0.Id, variantId);
+                    location = await BackEndSession.LoadLocationLoot(Location_0.Id, variantId);
+                }
+            }
+            BackendConfigSettingsClass instance = Singleton<BackendConfigSettingsClass>.Instance;
+            if (instance != null && instance.HalloweenSettings.EventActive && !instance.HalloweenSettings.LocationsToIgnore.Contains(location._Id))
+            {
+                GameObject gameObject = (GameObject)Resources.Load("Prefabs/HALLOWEEN_CONTROLLER");
+                if (gameObject != null)
+                {
+                    GClass5.InstantiatePrefab(base.transform, gameObject);
+                }
+                else
+                {
+                    UnityEngine.Debug.LogError("Can't find event prefab in resources. Path : Prefabs/HALLOWEEN_CONTROLLER");
+                }
+            }
+            BackendConfigManagerConfig config = BackendConfigManager.Config;
+            if (config.FixedFrameRate > 0f)
+            {
+                base.FixedDeltaTime = 1f / config.FixedFrameRate;
+            }
+            //using (TokenStarter.StartWithToken("player create"))
+            {
+                EFT.Player player = await CreatePlayerSpawn();
+                dictionary_0.Add(player.ProfileId, player);
+                gparam_0 = func_1(player);
+                PlayerCameraController.Create(gparam_0.Player);
+                FPSCamera.Instance.SetOcclusionCullingEnabled(Location_0.OcculsionCullingEnabled);
+                FPSCamera.Instance.IsActive = false;
+            }
+
+            await SpawnLoot(location);
+            await WaitForPlayersToSpawn();
+            await WaitForPlayersToBeReady();
+            await WaitForHostToStart();
+
+            method_5(botsSettings, SpawnSystem, runCallback);
+        }
+
+        class PlayerLoopSystemType
+        {
+            public PlayerLoopSystemType()
+            {
+
+            }
+        }
+       
+
+        public async Task SpawnLoot(LocationSettingsClass.Location location)
+        {
+            Logger.LogDebug(nameof(SpawnLoot));
+
+            using (TokenStarter.StartWithToken("SpawnLoot"))
+            {
+                Item[] source = location.Loot.Select((GLootItem x) => x.Item).ToArray();
+                ResourceKey[] array = source.OfType<ContainerCollection>().GetAllItemsFromCollections().Concat(source.Where((Item x) => !(x is ContainerCollection))).SelectMany((Item x) => x.Template.AllResources)
+                    .ToArray();
+                if (array.Length != 0)
+                {
+                    PlayerLoopSystem currentPlayerLoop = PlayerLoop.GetCurrentPlayerLoop();
+                    //var parentPlayerLoopSystemType = ReflectionHelpers.EftTypes.FirstOrDefault(x => ReflectionHelpers.GetMethodForType(x, "FindParentPlayerLoopSystem") != null);
+
+                    PlayerLoopSystem playerLoopSystem = default(PlayerLoopSystem);
+                    var index = 0;
+                    //ReflectionHelpers.GetMethodForType(parentPlayerLoopSystemType, "FindParentPlayerLoopSystem").Invoke(null, new object[] { currentPlayerLoop, typeof(EarlyUpdate.UpdateTextureStreamingManager), playerLoopSystem, index });
+                    
+                    // TODO: Remap or figure out a way to avoid this
+                    GClass572.FindParentPlayerLoopSystem(currentPlayerLoop, typeof(EarlyUpdate.UpdateTextureStreamingManager), out playerLoopSystem, out index);
+                    PlayerLoopSystem[] array2 = new PlayerLoopSystem[playerLoopSystem.subSystemList.Length];
+                    if (index != -1)
+                    {
+                        Array.Copy(playerLoopSystem.subSystemList, array2, playerLoopSystem.subSystemList.Length);
+                        PlayerLoopSystem playerLoopSystem2 = default(PlayerLoopSystem);
+                        playerLoopSystem2.updateDelegate = smethod_3;
+                        playerLoopSystem2.type = typeof(PlayerLoopSystemType);
+                        PlayerLoopSystem playerLoopSystem3 = playerLoopSystem2;
+                        playerLoopSystem.subSystemList[index] = playerLoopSystem3;
+                        PlayerLoop.SetPlayerLoop(currentPlayerLoop);
+                    }
+                    await Singleton<PoolManager>.Instance.LoadBundlesAndCreatePools(PoolManager.PoolsCategory.Raid, PoolManager.AssemblyType.Local, array, JobPriority.General, new GClass3273<GStruct118>(delegate (GStruct118 p)
+                    {
+                        SetMatchmakerStatus("Loading loot... " + p.Stage, p.Progress);
+                    }));
+                    if (index != -1)
+                    {
+                        Array.Copy(array2, playerLoopSystem.subSystemList, playerLoopSystem.subSystemList.Length);
+                        PlayerLoop.SetPlayerLoop(currentPlayerLoop);
+                    }
+                }
+                LootItems lootItems = Singleton<GameWorld>.Instance.method_4(location.Loot);
+                Singleton<GameWorld>.Instance.method_5(lootItems, initial: true);
+                await gparam_0.Player.ManageGameQuests();
+            }
+        }
+
+        private async Task<EFT.Player> CreatePlayerSpawn()
+        {
+            Logger.LogDebug(nameof(CreatePlayerSpawn));
+
+            int playerId = 1;
+            EFT.Player.EUpdateMode armsUpdateMode = EFT.Player.EUpdateMode.Auto;
+            LocalPlayer obj = await vmethod_2(playerId, Vector3.zero, Quaternion.identity, "Player", "", EPointOfView.FirstPerson, Profile_0, aiControl: false, base.UpdateQueue, armsUpdateMode, EFT.Player.EUpdateMode.Auto, BackendConfigManager.Config.CharacterController.ClientPlayerMode, () => Singleton<SettingsManager>.Instance.Control.Settings.MouseSensitivity, () => Singleton<SettingsManager>.Instance.Control.Settings.MouseAimingSensitivity, new GAbstractStatisticsManager(), null, null);
+            obj.Location = Location_0.Id;
+            obj.OnEpInteraction += base.OnEpInteraction;
+            return obj;
         }
     }
 }

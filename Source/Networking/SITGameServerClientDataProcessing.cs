@@ -19,12 +19,11 @@ namespace StayInTarkov.Networking
 {
     public static class SITGameServerClientDataProcessing
     {
-        public static bool DEBUGPACKETS = false;
-
         public const string PACKET_TAG_METHOD = "m";
         public const string PACKET_TAG_SERVERID = "serverId";
         public const string PACKET_TAG_DATA = "data";
 
+        public static event Action<ushort> OnLatencyUpdated;
 
         public static ManualLogSource Logger { get; }
 
@@ -68,20 +67,10 @@ namespace StayInTarkov.Networking
                 // Is a RAW SIT Serialized packet
                 else
                 {
-
-                    //Logger.LogDebug(Encoding.UTF8.GetString(data));
-                    //BasePlayerPacket basePlayerPacket = new BasePlayerPacket();
-                    //packet = basePlayerPacket.ToDictionary(data);
                     ProcessSITPacket(data, ref packet, out sitPacket);
-
                 }
 
-                if (DEBUGPACKETS)
-                {
-                    Logger.LogInfo("GOT :" + sData);
-                }
-
-                var coopGameComponent = CoopGameComponent.GetCoopGameComponent();
+                var coopGameComponent = SITGameComponent.GetCoopGameComponent();
 
                 if (coopGameComponent == null)
                 {
@@ -95,34 +84,13 @@ namespace StayInTarkov.Networking
                     return;
                 }
 
-                if (DEBUGPACKETS)
-                {
-                    Logger.LogInfo("GOT :" + packet.SITToJson());
-                }
-
-                if (packet.ContainsKey("dataList"))
-                {
-                    if (ProcessDataListPacket(ref packet))
-                        return;
-                }
-
-                //Logger.LogDebug($"Step.1. Packet exists. {packet.ToJson()}");
-
                 // If this is a pong packet, resolve and create a smooth ping
                 if (packet.ContainsKey("pong"))
                 {
                     var pongRaw = long.Parse(packet["pong"].ToString());
                     var dtPong = new DateTime(pongRaw);
-                    var serverPing = (int)(DateTime.UtcNow - dtPong).TotalMilliseconds;
-                    coopGameComponent.UpdatePing(serverPing);
-                    return;
-                }
-
-                if (packet.ContainsKey("HostPing"))
-                {
-                    var dtHP = new DateTime(long.Parse(packet["HostPing"].ToString()));
-                    var timeSpanOfHostToMe = DateTime.UtcNow - dtHP;
-                    //HostPing = (int)Math.Round(timeSpanOfHostToMe.TotalMilliseconds);
+                    var latencyMs = (DateTime.UtcNow - dtPong).TotalMilliseconds / 2;
+                    OnLatencyUpdated((ushort)latencyMs);
                     return;
                 }
 
@@ -147,29 +115,33 @@ namespace StayInTarkov.Networking
                     return;
                 }
 
-
-
                 // -------------------------------------------------------
                 // Add to the Coop Game Component Action Packets
                 if (coopGameComponent == null || coopGameComponent.ActionPackets == null || coopGameComponent.ActionPacketHandler == null)
                     return;
 
-
-                if (packet.ContainsKey(PACKET_TAG_METHOD)
-                    && packet[PACKET_TAG_METHOD].ToString() == "Move")
-                    coopGameComponent.ActionPacketHandler.ActionPacketsMovement.TryAdd(packet);
-                else if (packet.ContainsKey(PACKET_TAG_METHOD)
-                    && packet[PACKET_TAG_METHOD].ToString() == "ApplyDamageInfo")
-                {
-                    coopGameComponent.ActionPacketHandler.ActionPacketsDamage.TryAdd(packet);
-                }
+                //if (packet.ContainsKey(PACKET_TAG_METHOD)
+                //    && packet[PACKET_TAG_METHOD].ToString() == "Move")
+                //    coopGameComponent.ActionPacketHandler.ActionPacketsMovement.TryAdd(packet);
+                //else if (packet.ContainsKey(PACKET_TAG_METHOD)
+                //    && packet[PACKET_TAG_METHOD].ToString() == "ApplyDamageInfo")
+                //{
+                //    coopGameComponent.ActionPacketHandler.ActionPacketsDamage.TryAdd(packet);
+                //}
+                //else
+                //{
+                if (sitPacket != null)
+                    coopGameComponent.ActionPacketHandler.ActionSITPackets.Add(sitPacket);
                 else
                 {
-                    if (sitPacket != null)
-                        coopGameComponent.ActionPacketHandler.ActionSITPackets.Add(sitPacket);
-                    else
-                        coopGameComponent.ActionPacketHandler.ActionPackets.TryAdd(packet);
+#if DEBUG
+                    Logger.LogDebug($">> DEV TODO <<");
+                    Logger.LogDebug($">> Convert the following packet to binary <<");
+                    Logger.LogDebug($"{packet.ToJson()}");
+#endif 
+                    coopGameComponent.ActionPacketHandler.ActionPackets.TryAdd(packet);
                 }
+                //}
 
             }
             catch (Exception ex)
@@ -182,7 +154,7 @@ namespace StayInTarkov.Networking
         {
             packet = null;
 
-            var coopGameComponent = CoopGameComponent.GetCoopGameComponent();
+            var coopGameComponent = SITGameComponent.GetCoopGameComponent();
             if (coopGameComponent == null)
             {
                 Logger.LogError($"{nameof(ProcessSITPacket)}. coopGameComponent is Null");
@@ -221,35 +193,46 @@ namespace StayInTarkov.Networking
 
             if (!dictObject.ContainsKey("profileId"))
             {
-                var bpp = new BasePlayerPacket("", dictObject[PACKET_TAG_METHOD].ToString());
-                bpp.Deserialize(data);
-                dictObject.Add("profileId", new string(bpp.ProfileId.ToCharArray()));
-                bpp.Dispose();
-                bpp = null;
+                try
+                {
+                    var bpp = new BasePlayerPacket("", dictObject[PACKET_TAG_METHOD].ToString());
+                    bpp.Deserialize(data);
+                    dictObject.Add("profileId", new string(bpp.ProfileId.ToCharArray()));
+                    bpp.Dispose();
+                    bpp = null;
+                }
+                catch { }
             }
 
-            if (DEBUGPACKETS)
-            {
-                Logger.LogInfo(" ==================SIT Packet============= ");
-                Logger.LogInfo(dictObject.ToJson());
-            }
+            packet = DeserializeIntoPacket(data, packet, bp);
+        }
 
-            var sitPacketType = 
-                StayInTarkovHelperConstants
-                .SITTypes
-                .Union(ReflectionHelpers.EftTypes)
-                .FirstOrDefault(x => x.Name == bp.Method);
-            if (sitPacketType != null) 
+        private static ISITPacket DeserializeIntoPacket(byte[] data, ISITPacket packet, BasePacket bp)
+        {
+            var sitPacketType =
+                            StayInTarkovHelperConstants
+                            .SITTypes
+                            .Union(ReflectionHelpers.EftTypes)
+                            .FirstOrDefault(x => x.Name == bp.Method);
+            if (sitPacketType != null)
             {
                 //Logger.LogInfo($"{sitPacketType} found");
                 packet = (ISITPacket)Activator.CreateInstance(sitPacketType);
                 packet = packet.Deserialize(data);
             }
+            else
+            {
+#if DEBUG
+                Logger.LogDebug($"{nameof(DeserializeIntoPacket)}:{bp.Method} could not find a matching ISITPacket type");
+#endif
+            }
+
+            return packet;
         }
 
         public static bool ProcessDataListPacket(ref Dictionary<string, object> packet)
         {
-            var coopGC = CoopGameComponent.GetCoopGameComponent();
+            var coopGC = SITGameComponent.GetCoopGameComponent();
             if (coopGC == null)
                 return false;
 
@@ -274,10 +257,6 @@ namespace StayInTarkov.Networking
 
                         if (coopGC.Players.ContainsKey(playerStatePacket.ProfileId))
                             coopGC.Players[playerStatePacket.ProfileId].ReceivePlayerStatePacket(playerStatePacket);
-
-
-                        var serverPing = (int)(DateTime.UtcNow - new DateTime(long.Parse(packet["t"].ToString()))).TotalMilliseconds;
-                        coopGC.ServerPingSmooth.Enqueue(serverPing);
 
                         break;
                     case "Multiple":

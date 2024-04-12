@@ -48,8 +48,7 @@ namespace StayInTarkov.Coop.NetworkPacket.Player
 
         public override void Process()
         {
-            if (CoopGameComponent.TryGetCoopGameComponent(out var coopGameComponent))
-                coopGameComponent.UpdatePing(GetTimeSinceSent().Milliseconds);
+            //StayInTarkovHelperConstants.Logger.LogInfo($"{nameof(PlayerStatesPacket)}:{nameof(Process)}:{this.SITToJson()}");
 
             for (var i = 0; i < PlayerStates.Length; i++)
                 PlayerStates[i].Process();
@@ -69,5 +68,7 @@ namespace StayInTarkov.Coop.NetworkPacket.Player
             }
             base.Dispose(disposing);
         }
+
+
     }
 }

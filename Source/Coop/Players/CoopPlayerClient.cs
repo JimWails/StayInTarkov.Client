@@ -2,6 +2,7 @@
 using Comfort.Common;
 using Diz.LanguageExtensions;
 using EFT;
+using EFT.Interactive;
 using EFT.InventoryLogic;
 using StayInTarkov.Coop.Components.CoopGameComponents;
 using StayInTarkov.Coop.Controllers;
@@ -25,8 +26,8 @@ namespace StayInTarkov.Coop.Players
     {
         public override ManualLogSource BepInLogger { get; } = BepInEx.Logging.Logger.CreateLogSource(nameof(CoopPlayerClient));
 
-        public PlayerStatePacket LastState { get; set; } = new PlayerStatePacket();
-        public PlayerStatePacket NewState { get; set; } = new PlayerStatePacket();
+        public PlayerStatePacket LastState { get; set; }// = new PlayerStatePacket();
+        public PlayerStatePacket NewState { get; set; }// = new PlayerStatePacket();
 
         public ConcurrentQueue<PlayerPostProceedDataSyncPacket> ReplicatedPostProceedData { get; } = new ();
 
@@ -56,25 +57,20 @@ namespace StayInTarkov.Coop.Players
 
         public override ApplyShot ApplyShot(DamageInfo damageInfo, EBodyPart bodyPartType, EBodyPartColliderType colliderType, EArmorPlateCollider armorPlateCollider, ShotId shotId)
         {
-            // Paulov: This creates a server authorative Damage model
-            // I am filtering out Bullet from this model (for now)
-            if (SITMatchmaking.IsClient && damageInfo.DamageType != EDamageType.Bullet)
-            {
-                ReceiveDamage(damageInfo.Damage, bodyPartType, damageInfo.DamageType, 0, 0);
-                return null;
-            }
-
+#if DEBUGDAMAGE
             BepInLogger.LogDebug($"{nameof(CoopPlayerClient)}:{nameof(ApplyShot)}:{damageInfo.DamageType}");
+#endif
+
             return base.ApplyShot(damageInfo, bodyPartType, colliderType, armorPlateCollider, shotId);
         }
 
         public override void ApplyDamageInfo(DamageInfo damageInfo, EBodyPart bodyPartType, EBodyPartColliderType colliderType, float absorbed)
         {
+#if DEBUGDAMAGE
             BepInLogger.LogDebug($"{nameof(CoopPlayerClient)}:{nameof(ApplyDamageInfo)}:{damageInfo.DamageType}");
+#endif
 
-            // Paulov: This creates a server authorative Damage model
-            // I am filtering out Bullet from this model (for now)
-            if (SITMatchmaking.IsClient && damageInfo.DamageType != EDamageType.Bullet)
+            if (!SITGameComponent.TryGetCoopGameComponent(out var coopGameComponent))
                 return;
 
             base.ApplyDamageInfo(damageInfo, bodyPartType, colliderType, absorbed);
@@ -101,15 +97,8 @@ namespace StayInTarkov.Coop.Players
         {
             NewState = playerStatePacket;
             //BepInLogger.LogInfo($"{nameof(ReceivePlayerStatePacket)}:Packet took {DateTime.Now - new DateTime(long.Parse(NewState.TimeSerializedBetter))}.");
-            if (CoopGameComponent.TryGetCoopGameComponent(out var coopGameComponent))
-            {
-                var ms = (DateTime.Now - new DateTime(long.Parse(NewState.TimeSerializedBetter))).Milliseconds;
-                coopGameComponent.ServerPingSmooth.Enqueue(ms);
-            }
-            
 
             //BepInLogger.LogInfo(NewState.ToJson());
-
 
             if (LastRPSP == null)
                 LastRPSP = DateTime.Now;
@@ -208,43 +197,43 @@ namespace StayInTarkov.Coop.Players
                 //}
             }
 
-            
+
 
             // Update the Health parts of this character using the packets from the Player State
-            if (NewState != null)
-            {
-                var bodyPartDictionary = GetBodyPartDictionary(this);
-                if (bodyPartDictionary != null)
-                {
-                    //BepInLogger.LogInfo(bodyPartDictionary.ToJson());
-                    if (NewState.PlayerHealth != null)
-                    {
-                        foreach (var bodyPartPacket in NewState.PlayerHealth.BodyParts)
-                        {
-                            if (bodyPartPacket.BodyPart == EBodyPart.Common)
-                                continue;
+            UpdatePlayerHealthByPlayerState();
+        }
 
-                            if (bodyPartDictionary.ContainsKey(bodyPartPacket.BodyPart))
-                            {
-                                //BepInLogger.LogInfo($"{nameof(Update)} set bodyPart current {bodyPartPacket.ToJson()}");
-                                bodyPartDictionary[bodyPartPacket.BodyPart].Health.Current = bodyPartPacket.Current;
-                            }
-                            else
-                            {
-                                //BepInLogger.LogError($"{nameof(CoopPlayerClient)}:Unable to find {bodyPartPacket.BodyPart} in BodyPartDictionary {bodyPartDictionary.Keys.ToJson()}");
-                            }
-                        }
-                    }
-                    else
-                    {
-                        BepInLogger.LogDebug($"{nameof(CoopPlayerClient)}:{nameof(NewState.PlayerHealth)} is null");
-                    }
+        private void UpdatePlayerHealthByPlayerState()
+        {
+            if (NewState == null)
+                return;
+
+            if (NewState.PlayerHealth == null)
+                return;
+
+            var bodyPartDictionary = GetBodyPartDictionary(this);
+            if (bodyPartDictionary == null)
+            {
+                BepInLogger.LogError($"{nameof(CoopPlayerClient)}:Unable to obtain BodyPartDictionary");
+                return;
+            }
+
+            foreach (var bodyPartPacket in NewState.PlayerHealth.BodyParts)
+            {
+                if (bodyPartPacket.BodyPart == EBodyPart.Common)
+                    continue;
+
+                if (bodyPartDictionary.ContainsKey(bodyPartPacket.BodyPart))
+                {
+                    //BepInLogger.LogInfo($"{nameof(Update)} set bodyPart current {bodyPartPacket.ToJson()}");
+                    bodyPartDictionary[bodyPartPacket.BodyPart].Health.Current = bodyPartPacket.Current;
                 }
                 else
                 {
-                    BepInLogger.LogError($"{nameof(CoopPlayerClient)}:Unable to obtain BodyPartDictionary");
+                    //BepInLogger.LogError($"{nameof(CoopPlayerClient)}:Unable to find {bodyPartPacket.BodyPart} in BodyPartDictionary {bodyPartDictionary.Keys.ToJson()}");
                 }
             }
+               
         }
 
         private Dictionary<EBodyPart, BodyPartState> GetBodyPartDictionary(EFT.Player player)
@@ -305,7 +294,7 @@ namespace StayInTarkov.Coop.Players
             ApplyReplicatedMotion();
         }
 
-        void FixedUpdate()
+        new void FixedUpdate()
         {
             base.FixedUpdate();
 
@@ -405,6 +394,12 @@ namespace StayInTarkov.Coop.Players
 
             if (MovementContext == null)
                 return;
+
+            if (NewState == null)
+                return;
+
+            if (LastState == null)
+                LastState = NewState;
 
             var InterpolationRatio = Time.deltaTime * 5;
 
@@ -625,13 +620,15 @@ namespace StayInTarkov.Coop.Players
 
         public override void Proceed(Weapon weapon, Callback<IFirearmHandsController> callback, bool scheduled = true)
         {
-            Func<FirearmController> controllerFactory = (Func<FirearmController>)(() => FirearmController.smethod_5<SITFirearmControllerClient>(this, weapon));
-            bool fastHide = false;
-            if (_handsController is FirearmController firearmController)
-            {
-                fastHide = firearmController.CheckForFastWeaponSwitch(weapon);
-            }
-            new Process<FirearmController, IFirearmHandsController>(this, controllerFactory, weapon, fastHide).method_0(null, callback, scheduled);
+            if (_handsController != null && _handsController.Item == weapon)
+                return;
+
+            Func<SITFirearmControllerClient> controllerFactory = (Func<SITFirearmControllerClient>)(() => FirearmController.smethod_5<SITFirearmControllerClient>(this, weapon));
+            bool fastHide = true;
+            if (_handsController is SITFirearmControllerClient firearmController)
+                firearmController.ClearPreWarmOperationsDict();
+
+            new Process<SITFirearmControllerClient, IFirearmHandsController>(this, controllerFactory, weapon, fastHide).method_0(null, callback, scheduled);
         }
 
         public override void Proceed(KnifeComponent knife, Callback<IKnifeController> callback, bool scheduled = true)
@@ -667,6 +664,29 @@ namespace StayInTarkov.Coop.Players
         {
             Func<EmptyHandsController> controllerFactory = () => EmptyHandsController.smethod_5<EmptyHandsController>(this);
             new Process<EmptyHandsController, IController>(this, controllerFactory, null).method_0(null, callback, scheduled);
+        }
+
+        public override void Proceed(FoodClass foodDrink, float amount, Callback<IMedsController> callback, int animationVariant, bool scheduled = true)
+        {
+            Func<MedsController> controllerFactory = () => MedsController.smethod_5<MedsController>(this, foodDrink, EBodyPart.Head, amount, animationVariant);
+            new Process<MedsController, IMedsController>(this, controllerFactory, foodDrink).method_0(null, callback, scheduled);
+        }
+
+
+        public override void vmethod_0(WorldInteractiveObject interactiveObject, InteractionResult interactionResult, Action callback)
+        {
+            EInteractionType interactionType = interactionResult.InteractionType;
+            BepInLogger.LogDebug($"interact with door, interaction type {interactionType}");
+            CurrentManagedState.StartDoorInteraction(interactiveObject, interactionResult, callback);
+            UpdateInteractionCast();
+        }
+
+        public override void vmethod_1(WorldInteractiveObject door, InteractionResult interactionResult)
+        {
+            if (!(door == null))
+            {
+                CurrentManagedState.ExecuteDoorInteraction(door, interactionResult, null, this);
+            }
         }
     }
 }

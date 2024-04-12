@@ -13,7 +13,7 @@ using StayInTarkov.Coop.NetworkPacket.Player;
 using StayInTarkov.Coop.Players;
 using StayInTarkov.Coop.SITGameModes;
 using StayInTarkov.Coop.World;
-using StayInTarkov.Core.Player;
+//using StayInTarkov.Core.Player;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -33,7 +33,6 @@ namespace StayInTarkov.Coop.Components
 
         public readonly BlockingCollection<Dictionary<string, object>> ActionPackets = new(9999);
         public BlockingCollection<Dictionary<string, object>> ActionPacketsMovement { get; private set; } = new(9999);
-        public BlockingCollection<Dictionary<string, object>> ActionPacketsDamage { get; private set; } = new(9999);
         public ConcurrentDictionary<string, CoopPlayer> Players => CoopGameComponent.Players;
         public ManualLogSource Logger { get; private set; }
 
@@ -41,7 +40,7 @@ namespace StayInTarkov.Coop.Components
 
         private CoopSITGame CoopGame { get; } = (CoopSITGame)Singleton<AbstractGame>.Instance;
 
-        private CoopGameComponent CoopGameComponent { get; set; }
+        private SITGameComponent CoopGameComponent { get; set; }
 
         void Awake()
         {
@@ -50,13 +49,13 @@ namespace StayInTarkov.Coop.Components
             Logger = BepInEx.Logging.Logger.CreateLogSource("ActionPacketHandlerComponent");
             Logger.LogDebug("Awake");
 
-            CoopGameComponent = CoopPatches.CoopGameComponentParent.GetComponent<CoopGameComponent>();
+            CoopGameComponent = CoopPatches.CoopGameComponentParent.GetComponent<SITGameComponent>();
             ActionPacketsMovement = new();
         }
 
         void Start()
         {
-            CoopGameComponent = CoopPatches.CoopGameComponentParent.GetComponent<CoopGameComponent>();
+            CoopGameComponent = CoopPatches.CoopGameComponentParent.GetComponent<SITGameComponent>();
             ActionPacketsMovement = new();
         }
 
@@ -90,7 +89,7 @@ namespace StayInTarkov.Coop.Components
             {
                 if (CoopPatches.CoopGameComponentParent != null)
                 {
-                    CoopGameComponent = CoopPatches.CoopGameComponentParent.GetComponent<CoopGameComponent>();
+                    CoopGameComponent = CoopPatches.CoopGameComponentParent.GetComponent<SITGameComponent>();
                     if (CoopGameComponent == null)
                         return;
                 }
@@ -107,45 +106,59 @@ namespace StayInTarkov.Coop.Components
 
             if (ActionSITPackets.Count > 0)
             {
+#if DEBUGPACKETS
                 Stopwatch stopwatchActionPackets = Stopwatch.StartNew();
-                while (ActionSITPackets.TryTake(out var result))
+#endif
+                while (ActionSITPackets.TryTake(out var packet))
                 {
-                    
+#if DEBUGPACKETS
                     Stopwatch stopwatchActionPacket = Stopwatch.StartNew();
-                    if (!ProcessSITActionPackets(result))
-                    {
-                        continue;
-                    }
+#endif
+                    packet.Process();
 
+#if DEBUGPACKETS
                     if (stopwatchActionPacket.ElapsedMilliseconds > 1)
-                        Logger.LogDebug($"ActionSITPackets {result.Method} took {stopwatchActionPacket.ElapsedMilliseconds}ms to process!");
+                        Logger.LogDebug($"ActionSITPacket {packet.Method} took {stopwatchActionPacket.ElapsedMilliseconds}ms to process!");
+#endif
                 }
+#if DEBUGPACKETS
                 if (stopwatchActionPackets.ElapsedMilliseconds > 1)
                     Logger.LogDebug($"ActionSITPackets took {stopwatchActionPackets.ElapsedMilliseconds}ms to process!");
+#endif
             }
 
             if (ActionPackets.Count > 0)
             {
+#if DEBUGPACKETS
                 Stopwatch stopwatchActionPackets = Stopwatch.StartNew();
+#endif
                 while (ActionPackets.TryTake(out var result))
                 {
+#if DEBUGPACKETS
                     Stopwatch stopwatchActionPacket = Stopwatch.StartNew();
+#endif
                     if (!ProcessLastActionDataPacket(result))
                     {
                         //ActionPackets.Add(result);
                         continue;
                     }
 
+#if DEBUGPACKETS
                     if (stopwatchActionPacket.ElapsedMilliseconds > 1)
                         Logger.LogDebug($"ActionPacket {result["m"]} took {stopwatchActionPacket.ElapsedMilliseconds}ms to process!");
+#endif
                 }
+#if DEBUGPACKETS
                 if (stopwatchActionPackets.ElapsedMilliseconds > 1)
                     Logger.LogDebug($"ActionPackets took {stopwatchActionPackets.ElapsedMilliseconds}ms to process!");
+#endif
             }
 
             if (ActionPacketsMovement != null && ActionPacketsMovement.Count > 0)
             {
+#if DEBUGPACKETS
                 Stopwatch stopwatchActionPacketsMovement = Stopwatch.StartNew();
+#endif
                 while (ActionPacketsMovement.TryTake(out var result))
                 {
                     if (!ProcessLastActionDataPacket(result))
@@ -154,10 +167,12 @@ namespace StayInTarkov.Coop.Components
                         continue;
                     }
                 }
+#if DEBUGPACKETS
                 if (stopwatchActionPacketsMovement.ElapsedMilliseconds > 1)
                 {
                     Logger.LogDebug($"ActionPacketsMovement took {stopwatchActionPacketsMovement.ElapsedMilliseconds}ms to process!");
                 }
+#endif
             }
 
 
@@ -283,10 +298,10 @@ namespace StayInTarkov.Coop.Components
                     ReplicateAirdropLoot(packet);
                     result = true;
                     break;
-                case "RaidTimer":
-                    ReplicateRaidTimer(packet);
-                    result = true;
-                    break;
+                //case "RaidTimer":
+                //    ReplicateRaidTimer(packet);
+                //    result = true;
+                //    break;
                 case "TimeAndWeather":
                     ReplicateTimeAndWeather(packet);
                     result = true;
@@ -340,11 +355,8 @@ namespace StayInTarkov.Coop.Components
             if(plyr == null)
                 return false;
 
-            var prc = plyr.GetComponent<PlayerReplicatedComponent>();
-            if (prc == null)
-                return false;
-                
-            prc.ProcessPacket(packet);
+            plyr.ProcessModuleReplicationPatch(packet);
+           
             return true;
         }
 
@@ -405,50 +417,50 @@ namespace StayInTarkov.Coop.Components
                 packet["config"].ToString().SITParseJson<AirdropConfigModel>());
         }
 
-        void ReplicateRaidTimer(Dictionary<string, object> packet)
-        {
-            CoopGameComponent coopGameComponent = CoopGameComponent.GetCoopGameComponent();
-            if (coopGameComponent == null)
-                return;
+        //void ReplicateRaidTimer(Dictionary<string, object> packet)
+        //{
+        //    SITGameComponent coopGameComponent = SITGameComponent.GetCoopGameComponent();
+        //    if (coopGameComponent == null)
+        //        return;
 
-            if (SITMatchmaking.IsClient)
-            {
-                var sessionTime = new TimeSpan(long.Parse(packet["sessionTime"].ToString()));
-                Logger.LogDebug($"RaidTimer: Remaining session time {sessionTime.TraderFormat()}");
+        //    if (SITMatchmaking.IsClient)
+        //    {
+        //        var sessionTime = new TimeSpan(long.Parse(packet["sessionTime"].ToString()));
+        //        Logger.LogDebug($"RaidTimer: Remaining session time {sessionTime.TraderFormat()}");
 
-                if (coopGameComponent.LocalGameInstance is CoopSITGame coopGame)
-                {
-                    var gameTimer = coopGame.GameTimer;
-                    if (gameTimer.StartDateTime.HasValue && gameTimer.SessionTime.HasValue)
-                    {
-                        if (gameTimer.PastTime.TotalSeconds < 3)
-                            return;
+        //        if (coopGameComponent.LocalGameInstance is CoopSITGame coopGame)
+        //        {
+        //            var gameTimer = coopGame.GameTimer;
+        //            if (gameTimer.StartDateTime.HasValue && gameTimer.SessionTime.HasValue)
+        //            {
+        //                if (gameTimer.PastTime.TotalSeconds < 3)
+        //                    return;
 
-                        var timeRemain = gameTimer.PastTime + sessionTime;
+        //                var timeRemain = gameTimer.PastTime + sessionTime;
 
-                        if (Math.Abs(gameTimer.SessionTime.Value.TotalSeconds - timeRemain.TotalSeconds) < 5)
-                            return;
+        //                if (Math.Abs(gameTimer.SessionTime.Value.TotalSeconds - timeRemain.TotalSeconds) < 5)
+        //                    return;
 
-                        Logger.LogInfo($"RaidTimer: New SessionTime {timeRemain.TraderFormat()}");
-                        gameTimer.ChangeSessionTime(timeRemain);
+        //                Logger.LogInfo($"RaidTimer: New SessionTime {timeRemain.TraderFormat()}");
+        //                gameTimer.ChangeSessionTime(timeRemain);
 
-                        MainTimerPanel mainTimerPanel = ReflectionHelpers.GetFieldOrPropertyFromInstance<MainTimerPanel>(coopGame.GameUi.TimerPanel, "_mainTimerPanel", false);
-                        if (mainTimerPanel != null)
-                        {
-                            FieldInfo extractionDateTimeField = ReflectionHelpers.GetFieldFromType(typeof(TimerPanel), "dateTime_0");
-                            extractionDateTimeField.SetValue(mainTimerPanel, gameTimer.StartDateTime.Value.AddSeconds(timeRemain.TotalSeconds));
+        //                MainTimerPanel mainTimerPanel = ReflectionHelpers.GetFieldOrPropertyFromInstance<MainTimerPanel>(coopGame.GameUi.TimerPanel, "_mainTimerPanel", false);
+        //                if (mainTimerPanel != null)
+        //                {
+        //                    FieldInfo extractionDateTimeField = ReflectionHelpers.GetFieldFromType(typeof(TimerPanel), "dateTime_0");
+        //                    extractionDateTimeField.SetValue(mainTimerPanel, gameTimer.StartDateTime.Value.AddSeconds(timeRemain.TotalSeconds));
 
-                            MethodInfo UpdateTimerMI = ReflectionHelpers.GetMethodForType(typeof(MainTimerPanel), "UpdateTimer");
-                            UpdateTimerMI.Invoke(mainTimerPanel, new object[] { });
-                        }
-                    }
-                }
-            }
-        }
+        //                    MethodInfo UpdateTimerMI = ReflectionHelpers.GetMethodForType(typeof(MainTimerPanel), "UpdateTimer");
+        //                    UpdateTimerMI.Invoke(mainTimerPanel, new object[] { });
+        //                }
+        //            }
+        //        }
+        //    }
+        //}
 
         void ReplicateTimeAndWeather(Dictionary<string, object> packet)
         {
-            CoopGameComponent coopGameComponent = CoopGameComponent.GetCoopGameComponent();
+            SITGameComponent coopGameComponent = SITGameComponent.GetCoopGameComponent();
             if (coopGameComponent == null)
                 return;
 
@@ -546,7 +558,7 @@ namespace StayInTarkov.Coop.Components
 
         void ReplicateArmoredTrainTime(Dictionary<string, object> packet)
         {
-            CoopGameComponent coopGameComponent = CoopGameComponent.GetCoopGameComponent();
+            SITGameComponent coopGameComponent = SITGameComponent.GetCoopGameComponent();
             if (coopGameComponent == null)
                 return;
 

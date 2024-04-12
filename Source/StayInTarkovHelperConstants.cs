@@ -190,7 +190,7 @@ namespace StayInTarkov
                 ReferenceLoopHandling = ReferenceLoopHandling.Ignore,
                 Error = (serializer, err) =>
                 {
-                    Logger.LogError(err.ErrorContext.Error.ToString());
+                    Logger.LogError($"JsonSerializer.Error {err.ErrorContext.Error}");
                 }
             };
         }
@@ -236,7 +236,7 @@ namespace StayInTarkov
             }
             catch (Exception ex)
             {
-                Logger?.LogError(nameof(TrySITParseJson) + ": has filed to Parse Json");
+                Logger?.LogError(nameof(TrySITParseJson) + ": has failed to Parse Json");
                 Logger?.LogError(nameof(TrySITParseJson) + ": " + str);
                 Logger?.LogError(nameof(TrySITParseJson) + ": " + ex);
                 result = default(T);

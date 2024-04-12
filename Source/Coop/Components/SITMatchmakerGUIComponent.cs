@@ -1,21 +1,17 @@
 ﻿using BepInEx.Logging;
-using Comfort.Common;
 using EFT;
 using EFT.Bots;
 using EFT.UI;
 using EFT.UI.Matchmaker;
 using Newtonsoft.Json.Linq;
-using Open.Nat;
 using StayInTarkov.Configuration;
 using StayInTarkov.Coop.Matchmaker;
 using StayInTarkov.Networking;
 using StayInTarkov.UI;
-using STUN;
 using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using TMPro;
@@ -60,8 +56,8 @@ namespace StayInTarkov.Coop.Components
         private int protocolInput = 0;
         private string pendingServerId = "";
         private int p2pAddressOptionInput;
-        private string IpAddressInput { get; set; } = SITIPAddressManager.SITIPAddresses.ExternalAddresses.IPAddressV4;
-        private int PortInput { get; set; } = 6972;
+        private string IpAddressInput { get; set; } = "";
+        private int PortInput { get; set; } = 0;
 
         private string[] BotAmountStringOptions = new string[]
         {
@@ -125,7 +121,7 @@ namespace StayInTarkov.Coop.Components
 
             TMPManager = new PaulovTMPManager();
             //DrawIPAddresses();
-            DrawSITButtons();
+            //DrawSITButtons();
             //// Get Canvas
             //Canvas = GameObject.FindObjectOfType<Canvas>();
             //if (Canvas != null)
@@ -183,12 +179,21 @@ namespace StayInTarkov.Coop.Components
                 previewsPanelRect.position = new Vector3(400, 300, 0);
             }
 
-
             var playerImage = GameObject.Find("PlayerImage");
             if (playerImage != null)
             {
                 var playerImageRect = playerImage.GetComponent<RectTransform>();
                 playerImageRect.localScale = new Vector3(1.4f, 1.4f, 0);
+            }
+
+            if (!string.IsNullOrWhiteSpace(PluginConfigSettings.Instance.CoopSettings.UdpServerPublicIP))
+            {
+                IpAddressInput = PluginConfigSettings.Instance.CoopSettings.UdpServerPublicIP;
+            }
+
+            if (PluginConfigSettings.Instance.CoopSettings.UdpServerPublicPort > 0)
+            {
+                PortInput = PluginConfigSettings.Instance.CoopSettings.UdpServerPublicPort;
             }
 
             DeleteExistingMatches();
@@ -201,26 +206,23 @@ namespace StayInTarkov.Coop.Components
             AkiBackendCommunication.Instance.PostJson("/coop/server/delete", jsonObj.ToString());
         }
 
-        private void DrawIPAddresses()
-        {
-            var GOIPv4_Text = TMPManager.InstantiateTarkovTextLabel("GOIPv4_Text", $"IPv4: {SITIPAddressManager.SITIPAddresses.ExternalAddresses.IPAddressV4}", 16, new Vector3(0, (Screen.height / 2) - 120, 0));
-            TMPManager.InstantiateTarkovTextLabel("GOIPv4_Text", GOIPv4_Text.transform, $"IPv6: {SITIPAddressManager.SITIPAddresses.ExternalAddresses.IPAddressV6}", 16, new Vector3(0, -20, 0));
-        }
+        //private void DrawIPAddresses()
+        //{
+        //    var GOIPv4_Text = TMPManager.InstantiateTarkovTextLabel("GOIPv4_Text", $"IPv4: {SITMatchmaking.IPAddress}", 16, new Vector3(0, (Screen.height / 2) - 120, 0));
+        //    TMPManager.InstantiateTarkovTextLabel("GOIPv4_Text", GOIPv4_Text.transform, $"IPv6: {SITIPAddressManager.SITIPAddresses.ExternalAddresses.IPAddressV6}", 16, new Vector3(0, -20, 0));
+        //}
 
-        private void DrawSITButtons()
-        {
-            //TMPManager.InstantiateTarkovButton("test_btn", "Test", 16, new Vector3(0, (Screen.height / 2) - 120, 0));
-        }
+        //private void DrawSITButtons()
+        //{
+        //    //TMPManager.InstantiateTarkovButton("test_btn", "Test", 16, new Vector3(0, (Screen.height / 2) - 120, 0));
+        //}
 
         void OnDestroy()
         {
             if (m_cancellationTokenSource != null)
                 m_cancellationTokenSource.Cancel();
 
-
             StopAllTasks = true;
-
-            
         }
 
         void Update()
@@ -285,8 +287,8 @@ namespace StayInTarkov.Coop.Components
                 buttonX += buttonWidth + 10;
                 if (GUI.Button(new UnityEngine.Rect(buttonX, buttonY, buttonWidth, buttonHeight), StayInTarkovPlugin.LanguageDictionary["PLAY_SINGLE_PLAYER"].ToString(), gamemodeButtonStyle))
                 {
+                    Logger.LogDebug("Click Play Single Player Button");
                     FixesHideoutMusclePain();
-                    SITMatchmaking.MatchingType = EMatchmakerType.Single;
                     //OriginalAcceptButton.OnClick.Invoke();
                     HostSoloRaidAndJoin();
                 }
@@ -526,29 +528,37 @@ namespace StayInTarkov.Coop.Components
                 {
                     var yPos = yPosOffset + index * (cellHeight + 5);
 
-                    // Display Host Name with "Raid" label
-                    GUI.Label(new UnityEngine.Rect(10, yPos, cellWidth - separatorWidth, cellHeight), $"{match["HostName"].ToString()} Raid", labelStyle);
 
-                    // Display Player Count
-                    GUI.Label(new UnityEngine.Rect(cellWidth, yPos, cellWidth - separatorWidth, cellHeight), match["PlayerCount"].ToString(), labelStyle);
+                    //Extract player count from match before the server is shown
+                    int playerCount = int.Parse(match["PlayerCount"].ToString());
+                    string protocol = (string)match["Protocol"];
 
-                    // Display Location
-                    GUI.Label(new UnityEngine.Rect(cellWidth * 2, yPos, cellWidth - separatorWidth, cellHeight), match["Location"].ToString(), labelStyle);
-
-                    // Display Password Locked
-                    GUI.Label(new UnityEngine.Rect(cellWidth * 3, yPos, cellWidth - separatorWidth, cellHeight), bool.Parse(match["IsPasswordLocked"].ToString()) ? (string)StayInTarkovPlugin.LanguageDictionary["PASSWORD-YES"] : "", labelStyle);
-
-                    // Calculate the width of the combined server information (Host Name, Player Count, Location)
-                    var serverInfoWidth = cellWidth * 3 - separatorWidth * 2;
-
-                    // Create "Join" button for each match on the next column
-                    if (GUI.Button(new UnityEngine.Rect(cellWidth * 4 + separatorWidth / 2 + 15, yPos + (cellHeight * 0.3f), cellWidth * 0.8f, cellHeight * 0.5f), StayInTarkovPlugin.LanguageDictionary["JOIN"].ToString(), buttonStyle))
+                    if (playerCount > 0 || protocol == "PeerToPeerUdp")
                     {
-                        // Perform actions when the "Join" button is clicked
-                        JoinMatch(SITMatchmaking.Profile.ProfileId, match["ServerId"].ToString());
-                    }
+                        // Display Host Name with "Raid" label
+                        GUI.Label(new UnityEngine.Rect(10, yPos, cellWidth - separatorWidth, cellHeight), $"{match["HostName"]} Raid", labelStyle);
 
-                    index++;
+                        // Display Player Count
+                        GUI.Label(new UnityEngine.Rect(cellWidth, yPos, cellWidth - separatorWidth, cellHeight), match["PlayerCount"].ToString(), labelStyle);
+
+                        // Display Location
+                        GUI.Label(new UnityEngine.Rect(cellWidth * 2, yPos, cellWidth - separatorWidth, cellHeight), match["Location"].ToString(), labelStyle);
+
+                        // Display Password Locked
+                        GUI.Label(new UnityEngine.Rect(cellWidth * 3, yPos, cellWidth - separatorWidth, cellHeight), bool.Parse(match["IsPasswordLocked"].ToString()) ? (string)StayInTarkovPlugin.LanguageDictionary["PASSWORD-YES"] : "", labelStyle);
+
+                        // Calculate the width of the combined server information (Host Name, Player Count, Location)
+                        var serverInfoWidth = cellWidth * 3 - separatorWidth * 2;
+
+                        // Create "Join" button for each match on the next column
+                        if (GUI.Button(new UnityEngine.Rect(cellWidth * 4 + separatorWidth / 2 + 15, yPos + (cellHeight * 0.3f), cellWidth * 0.8f, cellHeight * 0.5f), StayInTarkovPlugin.LanguageDictionary["JOIN"].ToString(), buttonStyle))
+                        {
+                            // Perform actions when the "Join" button is clicked
+                            JoinMatch(SITMatchmaking.Profile.ProfileId, match["ServerId"].ToString());
+                        }
+
+                        index++;
+                    }
                 }
             }
         }
@@ -563,14 +573,9 @@ namespace StayInTarkov.Coop.Components
                 Enum.TryParse(result["protocol"].ToString(), out ESITProtocol protocol);
                 Logger.LogDebug($"{nameof(SITMatchmakerGUIComponent)}:{nameof(JoinMatch)}:{protocol}");
                 SITMatchmaking.SITProtocol = protocol;
-                SITMatchmaking.Port = int.Parse(result["port"].ToString());
                 SITMatchmaking.SetGroupId(result["serverId"].ToString());
                 SITMatchmaking.SetTimestamp(long.Parse(result["timestamp"].ToString()));
-                SITMatchmaking.MatchingType = EMatchmakerType.GroupPlayer;
                 SITMatchmaking.HostExpectedNumberOfPlayers = int.Parse(result["expectedNumberOfPlayers"].ToString());
-                
-                if(result.ContainsKey("ipAddress"))
-                    SITMatchmaking.IPAddress = result["ipAddress"].ToString();
 
                 FixesHideoutMusclePain();
                 DestroyThis();
@@ -781,6 +786,7 @@ namespace StayInTarkov.Coop.Components
             // Back button
             if (GUI.Button(new UnityEngine.Rect(10, windowInnerRect.height - 60, halfWindowWidth - 20, 30), StayInTarkovPlugin.LanguageDictionary["BACK"].ToString(), smallButtonStyle))
             {
+                Logger.LogDebug("Click Back Button");
                 showHostGameWindow = false;
                 showServerBrowserWindow = true;
             }
@@ -788,6 +794,7 @@ namespace StayInTarkov.Coop.Components
             // Start button
             if (GUI.Button(new UnityEngine.Rect(halfWindowWidth + 10, windowInnerRect.height - 60, halfWindowWidth - 20, 30), StayInTarkovPlugin.LanguageDictionary["START"].ToString(), smallButtonStyle))
             {
+                Logger.LogDebug("Click Start Button");
                 HostRaidAndJoin();
             }
         }
@@ -801,13 +808,16 @@ namespace StayInTarkov.Coop.Components
             RaidSettings.WavesSettings.BotDifficulty = (EBotDifficulty)botDifficultyInput;
             RaidSettings.WavesSettings.IsBosses = BotBossesEnabled;
 
+            bool useIPAddrInput = ((ESITProtocol)protocolInput) == ESITProtocol.PeerToPeerUdp && !string.IsNullOrWhiteSpace(IpAddressInput);
+
             SITMatchmaking.CreateMatch(
                 SITMatchmaking.Profile.ProfileId
                 , RaidSettings
                 , passwordInput
                 , (ESITProtocol)protocolInput
-                , ((ESITProtocol)protocolInput) == ESITProtocol.PeerToPeerUdp && p2pAddressOptionInput == 1 ? IpAddressInput : null
-                , PortInput);
+                , useIPAddrInput ? IpAddressInput : null
+                , PortInput
+                , EMatchmakerType.GroupLeader);
             OriginalAcceptButton.OnClick.Invoke();
 
             JObject joinPacket = new();
@@ -835,15 +845,9 @@ namespace StayInTarkov.Coop.Components
                 , ""
                 , ESITProtocol.RelayTcp
                 , null
-                , PortInput);
+                , PortInput,
+                EMatchmakerType.GroupLeader);
             OriginalAcceptButton.OnClick.Invoke();
-
-            JObject joinPacket = new();
-            joinPacket.Add("profileId", SITMatchmaking.Profile.ProfileId);
-            joinPacket.Add("serverId", SITMatchmaking.Profile.ProfileId);
-            joinPacket.Add("m", "JoinMatch");
-            AkiBackendCommunication.Instance.PostDownWebSocketImmediately(joinPacket.SITToJson());
-            //AkiBackendCommunication.Instance.PostJson("coop/server/update", joinPacket.SITToJson());
 
             DestroyThis();
         }
