@@ -52,7 +52,7 @@ namespace StayInTarkov.Coop.NetworkPacket.Player
 
         protected override void Process(CoopPlayerClient client)
         {
-            StayInTarkovHelperConstants.Logger.LogInfo($"{nameof(PlayerInteractWithDoorPacket)}:{nameof(Process)}");
+            //StayInTarkovHelperConstants.Logger.LogInfo($"{nameof(PlayerInteractWithDoorPacket)}:{nameof(Process)}");
 
             InteractionResult interactionResult = new((EInteractionType)int.Parse(ProcessJson["interactionType"].ToString()));
             KeyInteractionResult keyInteractionResult = null;

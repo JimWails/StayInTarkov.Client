@@ -804,7 +804,7 @@ namespace StayInTarkov.Coop.Players
         {
             base.vmethod_0(interactiveObject, interactionResult, callback);
 
-            BepInLogger.LogInfo($"Creating {nameof(PlayerInteractWithObjectPacket)} packet");
+            //BepInLogger.LogInfo($"Creating {nameof(PlayerInteractWithObjectPacket)} packet");
 
             JObject dict = new()
             {
@@ -843,7 +843,7 @@ namespace StayInTarkov.Coop.Players
             PlayerInteractWithObjectPacket playerInteractWithObjectPacket = new PlayerInteractWithObjectPacket(this.ProfileId);
             playerInteractWithObjectPacket.ProcessJson = dict;
 
-            BepInLogger.LogInfo($"Sending {nameof(PlayerInteractWithObjectPacket)} packet");
+            //BepInLogger.LogInfo($"Sending {nameof(PlayerInteractWithObjectPacket)} packet");
             GameClient.SendData(playerInteractWithObjectPacket.Serialize());
         }
 
@@ -851,7 +851,7 @@ namespace StayInTarkov.Coop.Players
         {
             base.vmethod_1(door, interactionResult);
 
-            BepInLogger.LogInfo($"Creating {nameof(PlayerInteractWithDoorPacket)} packet");
+            //BepInLogger.LogInfo($"Creating {nameof(PlayerInteractWithDoorPacket)} packet");
 
             JObject dict = new()
             {
@@ -891,7 +891,7 @@ namespace StayInTarkov.Coop.Players
             packet.DoorId = door.Id;
             packet.ProcessJson = dict;
 
-            BepInLogger.LogInfo($"Sending {nameof(PlayerInteractWithDoorPacket)} packet");
+            //BepInLogger.LogInfo($"Sending {nameof(PlayerInteractWithDoorPacket)} packet");
             GameClient.SendData(packet.Serialize());
 
 

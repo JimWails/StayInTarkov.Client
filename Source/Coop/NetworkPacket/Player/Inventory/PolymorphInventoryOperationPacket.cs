@@ -79,13 +79,13 @@ namespace StayInTarkov.Coop.NetworkPacket.Player.Inventory
                 return;
             }
 
-            Logger.LogDebug($"{descriptor.GetType().Name}");
+            //Logger.LogDebug($"{descriptor.GetType().Name}");
 
             if (descriptor is UnloadMagOperationDescriptor umod)
             {
                 if (umod.InternalOperationDescriptor != null)
                 {
-                    Logger.LogDebug($"{umod.InternalOperationDescriptor.GetType().Name}");
+                    //Logger.LogDebug($"{umod.InternalOperationDescriptor.GetType().Name}");
 
                     using (MemoryStream ms = new MemoryStream())
                     using (var binaryWriter = new BinaryWriter(ms))

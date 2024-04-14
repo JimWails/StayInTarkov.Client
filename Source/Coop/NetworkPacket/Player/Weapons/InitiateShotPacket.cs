@@ -209,7 +209,7 @@ namespace StayInTarkov.Coop.NetworkPacket.Player.Weapons
             // ammoToFire 
             if (ammoToFire != null)
             {
-                Logger.LogDebug($"Used {ammoToFire} in Chamber");
+                //Logger.LogDebug($"Used {ammoToFire} in Chamber");
                 return;
             }
 

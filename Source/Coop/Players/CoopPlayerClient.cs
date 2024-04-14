@@ -78,12 +78,12 @@ namespace StayInTarkov.Coop.Players
 
         public override void OnHealthEffectAdded(IEffect effect)
         {
-            BepInLogger.LogDebug($"{nameof(CoopPlayerClient)}:{nameof(OnHealthEffectAdded)}");
+            //BepInLogger.LogDebug($"{nameof(CoopPlayerClient)}:{nameof(OnHealthEffectAdded)}");
         }
 
         public override void OnHealthEffectRemoved(IEffect effect)
         {
-            BepInLogger.LogDebug($"{nameof(CoopPlayerClient)}:{nameof(OnHealthEffectRemoved)}");
+            //BepInLogger.LogDebug($"{nameof(CoopPlayerClient)}:{nameof(OnHealthEffectRemoved)}");
         }
 
         public override void KillMe(EBodyPartColliderType colliderType, float damage)
@@ -610,7 +610,7 @@ namespace StayInTarkov.Coop.Players
 
         public override void ReceiveSay(EPhraseTrigger trigger, int index, ETagStatus mask, bool aggressive)
         {
-            BepInLogger.LogDebug($"{nameof(ReceiveSay)}({trigger},{mask})");
+            //BepInLogger.LogDebug($"{nameof(ReceiveSay)}({trigger},{mask})");
 
             Speaker.PlayDirect(trigger, index);
 
