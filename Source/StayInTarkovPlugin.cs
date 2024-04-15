@@ -383,6 +383,7 @@ namespace StayInTarkov
             new LocationLootCacheBustingPatch().Enable();
             new FixBrokenSpawnOnSandboxPatch().Enable();
             new IsEnemyPatch().Enable();
+            new ClampRagdollPatch().Enable();
         }
 
         private void EnableCoopPatches()
