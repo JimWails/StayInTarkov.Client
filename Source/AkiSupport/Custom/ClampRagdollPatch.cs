@@ -5,6 +5,10 @@ using UnityEngine;
 
 namespace StayInTarkov.AkiSupport.Custom
 {
+    /// <summary>
+    /// Created by: SPT-Aki team
+    /// Link: https://dev.sp-tarkov.com/SPT-AKI/Modules/src/branch/master/project/Aki.Custom/Patches/ClampRagdollPatch.cs
+    /// </summary>
     public class ClampRagdollPatch : ModulePatch
     {
         protected override MethodBase GetTargetMethod()
