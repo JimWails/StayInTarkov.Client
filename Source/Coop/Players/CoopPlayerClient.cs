@@ -350,7 +350,7 @@ namespace StayInTarkov.Coop.Players
                 //_raycastHitCube.transform.position = hit.point;
                  
                 // If the guy is further than 40m away. Use the Teleportation system.
-                if (NewState != null && distanceFromCamera > 40)
+                if (NewState != null && distanceFromCamera > 300)
                 {
                     Teleport(NewState.Position);
                     this.Position = NewState.Position;
