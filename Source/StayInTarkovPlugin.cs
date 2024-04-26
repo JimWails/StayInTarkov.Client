@@ -30,6 +30,7 @@ using System.Threading;
 using BepInEx.Configuration;
 using UnityEngine;
 using StayInTarkov.Bundles;
+using StayInTarkov.AkiSupport.Singleplayer.Patches.RaidFix;
 
 namespace StayInTarkov
 {
@@ -289,6 +290,8 @@ namespace StayInTarkov
                 new SslCertificatePatch().Enable();
                 new Aki.Core.Patches.UnityWebRequestPatch().Enable();
                 new SendCommandsPatch().Enable();
+                // Fixes
+                new EndRaidDebug().Enable();
 
                 //https to http | wss to ws
                 var url = DetectBackendUrlAndToken.GetBackendConnection().BackendUrl;

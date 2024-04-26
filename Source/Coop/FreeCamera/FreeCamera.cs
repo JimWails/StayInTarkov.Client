@@ -31,8 +31,10 @@ namespace StayInTarkov.Coop.FreeCamera
                 return;
             }
 
-            bool keyDown = Input.GetKeyDown(KeyCode.Mouse0);
-            if (keyDown)
+            var fastMode = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
+            var movementSpeed = fastMode ? 20f : 3f;
+
+            if (Input.GetKey(KeyCode.A) || Input.GetKey(KeyCode.LeftArrow))
             {
                 SITGameComponent sitGameComponent = SITGameComponent.GetCoopGameComponent();
                 bool flag2 = sitGameComponent == null;
