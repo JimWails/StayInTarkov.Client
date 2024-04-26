@@ -1,7 +1,6 @@
 ﻿using JetBrains.Annotations;
 using StayInTarkov.Coop.Components.CoopGameComponents;
 using StayInTarkov.Coop.Players;
-using StayInTarkov.Coop.SITGameModes;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -197,10 +196,6 @@ namespace StayInTarkov.Coop.FreeCamera
             bool flag18 = this.isFollowing;
             if (!flag18)
             {
-
-                var fastMode = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
-                var movementSpeed = fastMode ? 10f : 2f;
-
                 if (Input.GetKey(KeyCode.A) || Input.GetKey(KeyCode.LeftArrow))
                 {
                     transform.position += (-transform.right * (movementSpeed * Time.deltaTime));
