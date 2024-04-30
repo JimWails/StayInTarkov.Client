@@ -33,7 +33,7 @@ namespace StayInTarkov.Coop.FreeCamera
             var fastMode = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
             var movementSpeed = fastMode ? 20f : 3f;
 
-            if (Input.GetKey(KeyCode.A) || Input.GetKey(KeyCode.LeftArrow))
+            if (Input.GetKey(KeyCode.Mouse0))
             {
                 SITGameComponent sitGameComponent = SITGameComponent.GetCoopGameComponent();
                 bool flag2 = sitGameComponent == null;
